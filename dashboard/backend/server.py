@@ -154,14 +154,32 @@ class PortfolioManager:
             # 2. Stress Tests
             stress_list = [{"scenario": k, "impact": v} for k, v in stress_results.items()]
 
-            # 3. Periodic
+            # 3. Periodic + YTD for Heatmap
             periodic_list = []
+            
+            # Pre-calc YTD for all assets
+            ytd_assets = {}
+            for ticker in usd_prices.columns:
+                series = usd_prices[ticker]
+                # Slice from 2026-01-01
+                if series.index.tz is not None:
+                    series.index = series.index.tz_localize(None)
+                
+                ytd_series = series[series.index >= start_ytd]
+                if not ytd_series.empty:
+                    # Total return = (End / Start) - 1
+                    ytd_ret = (ytd_series.iloc[-1] / ytd_series.iloc[0]) - 1
+                    ytd_assets[ticker] = ytd_ret
+                else:
+                    ytd_assets[ticker] = 0.0
+
             for ticker, row in periodic_rets.iterrows():
                 periodic_list.append({
                     "ticker": ticker,
                     "r1y": row['1Y'] if not pd.isna(row['1Y']) else None,
                     "r3y": row['3Y'] if not pd.isna(row['3Y']) else None,
                     "r5y": row['5Y'] if not pd.isna(row['5Y']) else None,
+                    "ytd": ytd_assets.get(ticker, 0.0)
                 })
 
             # 4. Monte Carlo

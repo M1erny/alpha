@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import {
     ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, AreaChart, Area,
-    CartesianGrid, Legend
+    CartesianGrid, Legend, Treemap
 } from 'recharts';
 import { cn } from '../lib/utils';
 
@@ -18,6 +18,7 @@ export const Dashboard: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [statusMsg, setStatusMsg] = useState("Initializing...");
     const [retryCount, setRetryCount] = useState(0);
+    const [heatmapPeriod, setHeatmapPeriod] = useState<'ytd' | 'r1y' | 'r3y'>('ytd');
 
     useEffect(() => {
         const pollStatus = async () => {
@@ -148,7 +149,7 @@ export const Dashboard: React.FC = () => {
                             <span className={cn("text-2xl font-bold", vitals.riskEfficiencyVol > 1 ? "text-emerald-400" : "text-white")}>
                                 {formatNumber(vitals.riskEfficiencyVol)}
                             </span>
-                            <span className="text-xs text-muted-foreground">Unit Return</span>
+                            <span className="text-xs text-muted-foreground">vs {formatNumber(vitals.benchmarkSharpe)} (SPY)</span>
                         </div>
                     </div>
                     <div className="flex flex-col pl-4">
@@ -258,34 +259,124 @@ export const Dashboard: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* 2. Periodic Returns Heatmap */}
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-lg flex flex-col">
-                        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                            <Clock className="h-4 w-4" /> Asset Performance
-                        </h3>
-                        <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
-                            <table className="w-full text-sm">
-                                <thead className="text-xs text-muted-foreground border-b border-white/10">
-                                    <tr>
-                                        <th className="text-left pb-2 font-medium">Ticker</th>
-                                        <th className="text-right pb-2 font-medium">1Y</th>
-                                        <th className="text-right pb-2 font-medium">3Y</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-white/5">
-                                    {periodicReturns.sort((a, b) => (b.r1y || -99) - (a.r1y || -99)).slice(0, 10).map((row) => (
-                                        <tr key={row.ticker} className="group hover:bg-white/5 transition-colors">
-                                            <td className="py-2 text-white font-medium">{row.ticker}</td>
-                                            <td className={cn("text-right py-2", (row.r1y || 0) > 0 ? "text-emerald-400" : "text-rose-400")}>
-                                                {formatPercent(row.r1y as number)}
-                                            </td>
-                                            <td className={cn("text-right py-2", (row.r3y || 0) > 0 ? "text-emerald-400" : "text-rose-400")}>
-                                                {formatPercent(row.r3y as number)}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                    {/* 2. Periodic Returns Treemap (Heatmap) */}
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-lg flex flex-col min-h-[400px]">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                                <Clock className="h-4 w-4" /> Asset Heatmap
+                            </h3>
+                            <div className="flex bg-white/5 rounded-lg p-0.5 border border-white/10">
+                                {(['ytd', 'r1y', 'r3y'] as const).map((p) => (
+                                    <button
+                                        key={p}
+                                        onClick={() => setHeatmapPeriod(p)}
+                                        className={cn(
+                                            "px-3 py-1 text-[10px] font-medium rounded-md transition-all uppercase tracking-wider",
+                                            heatmapPeriod === p ? "bg-indigo-600 text-white shadow-sm" : "text-gray-400 hover:text-white hover:bg-white/5"
+                                        )}
+                                    >
+                                        {p === 'ytd' ? '2026' : p === 'r1y' ? '1Y' : '3Y'}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="flex-1 min-h-0">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <Treemap
+                                    data={riskAttribution.map(item => {
+                                        const retData = periodicReturns.find(p => p.ticker === item.ticker);
+                                        // Default to 0 if not found
+                                        let val = 0;
+                                        if (retData) {
+                                            if (heatmapPeriod === 'ytd') val = retData.ytd;
+                                            if (heatmapPeriod === 'r1y') val = retData.r1y || 0;
+                                            if (heatmapPeriod === 'r3y') val = retData.r3y || 0;
+                                        }
+                                        return {
+                                            name: item.ticker,
+                                            size: Math.abs(item.weight), // Size by absolute weight
+                                            value: val // Value is return (for color)
+                                        };
+                                    }).filter(x => x.size > 0.01)} // Filter small strings
+                                    dataKey="size"
+                                    aspectRatio={4 / 3}
+                                    stroke="#0f172a" // Gap color matches bg
+                                    content={(props: any) => {
+                                        const { x, y, width, height, payload, name, value } = props;
+                                        if (!payload || !name) return <g />;
+
+                                        // Color scale: Red (-20%) to Green (+20%)
+                                        // We use a customized color scale for a "Bloomberg Terminal" look
+                                        let fl = '#334155';
+                                        if (value > 0) {
+                                            // Green Scale
+                                            if (value > 0.20) fl = '#10b981';      // Emerald-500
+                                            else if (value > 0.10) fl = '#059669'; // Emerald-600
+                                            else if (value > 0.05) fl = '#047857'; // Emerald-700
+                                            else fl = '#065f46';                   // Emerald-800
+                                        } else {
+                                            // Red Scale
+                                            if (value < -0.20) fl = '#ef4444';     // Red-500
+                                            else if (value < -0.10) fl = '#dc2626'; // Red-600
+                                            else if (value < -0.05) fl = '#b91c1c'; // Red-700
+                                            else fl = '#991b1b';                   // Red-800(ish)
+                                        }
+                                        if (Math.abs(value) < 0.01) fl = '#334155'; // Neutral
+
+                                        return (
+                                            <g>
+                                                <rect
+                                                    x={x}
+                                                    y={y}
+                                                    width={width}
+                                                    height={height}
+                                                    rx={4} // Rounded corners
+                                                    ry={4}
+                                                    style={{
+                                                        fill: fl,
+                                                        stroke: '#0f172a',
+                                                        strokeWidth: 2,
+                                                    }}
+                                                />
+                                                {width > 30 && height > 30 && (
+                                                    <text
+                                                        x={x + width / 2}
+                                                        y={y + height / 2 - 7}
+                                                        textAnchor="middle"
+                                                        fill="#fff"
+                                                        fontSize={12}
+                                                        fontWeight="bold"
+                                                        style={{ pointerEvents: 'none' }}
+                                                    >
+                                                        {name}
+                                                    </text>
+                                                )}
+                                                {width > 30 && height > 30 && (
+                                                    <text
+                                                        x={x + width / 2}
+                                                        y={y + height / 2 + 7}
+                                                        textAnchor="middle"
+                                                        fill="rgba(255,255,255,0.8)"
+                                                        fontSize={10}
+                                                        style={{ pointerEvents: 'none' }}
+                                                    >
+                                                        {(value * 100).toFixed(1)}%
+                                                    </text>
+                                                )}
+                                            </g>
+                                        );
+                                    }}
+                                >
+                                    <Tooltip
+                                        contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155' }}
+                                        formatter={(val: any, name: any, item: any) => {
+                                            // Shows return
+                                            return [`${(item.payload.value * 100).toFixed(2)}%`, 'Return'];
+                                        }}
+                                        itemStyle={{ color: '#fff' }}
+                                    />
+                                </Treemap>
+                            </ResponsiveContainer>
                         </div>
                     </div>
 

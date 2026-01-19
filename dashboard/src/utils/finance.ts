@@ -39,6 +39,7 @@ export interface PeriodicReturn {
     r1y: number | null;
     r3y: number | null;
     r5y: number | null;
+    ytd: number;
 }
 
 export interface MonteCarloPoint {
