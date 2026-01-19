@@ -103,10 +103,39 @@ class PortfolioManager:
             else:
                 bench_sharpe = (bench_annual_ret - rf_rate) / bench_vol
 
+            # --- YTD RISK EFFICIENCY ---
+            # 1. YTD Beta
+            # Need matching indexes
+            common_idx = port_stream.index.intersection(bench_stream.index)
+            ytd_common_idx = common_idx[common_idx >= start_ytd]
+            
+            if len(ytd_common_idx) > 2:
+                ytd_p = port_stream.loc[ytd_common_idx]
+                ytd_b = bench_stream.loc[ytd_common_idx]
+                
+                cov_matrix = np.cov(ytd_p, ytd_b)
+                ytd_beta = cov_matrix[0, 1] / cov_matrix[1, 1]
+                
+                # YTD Vol (Annualized)
+                ytd_port_vol = ytd_p.std() * np.sqrt(252)
+                
+                # YTD Annualized Return (Approximation for ratio)
+                # We use the mean daily return * 252 as the 'annualized rate' for the ratio
+                ytd_ann_ret = ytd_p.mean() * 252
+                
+                # 2. Ratios
+                risk_adj_vol = (ytd_ann_ret - rf_rate) / ytd_port_vol if ytd_port_vol > 0 else 0
+                risk_adj_beta = (ytd_ann_ret - rf_rate) / ytd_beta if abs(ytd_beta) > 0.01 else 0
+            else:
+                ytd_beta = 0.0
+                risk_adj_vol = 0.0
+                risk_adj_beta = 0.0
+
             # Debug Logs
             print(f"[PM] Data Range: {port_stream.index[0]} to {port_stream.index[-1]}")
             print(f"[PM] YTD Portfolio: {ytd_portfolio:.2%}, Bench: {ytd_benchmark:.2%}")
             print(f"[PM] Bench Vol: {bench_vol:.2%}, Sharpe: {bench_sharpe:.2f}")
+            print(f"[PM] YTD Beta: {ytd_beta:.2f}, Eff(Vol): {risk_adj_vol:.2f}, Eff(Beta): {risk_adj_beta:.2f}")
 
             # --- PREPARE API RESPONSE ---
             # We construct the response dict here so the API call is instant
@@ -173,7 +202,12 @@ class PortfolioManager:
                     "ytdReturn": float(ytd_portfolio),
                     "benchmarkYtd": float(ytd_benchmark),
                     "benchmarkVol": float(bench_vol),
-                    "benchmarkSharpe": float(bench_sharpe)
+                    "benchmarkSharpe": float(bench_sharpe),
+                    
+                    # Risk Efficiency
+                    "ytdBeta": float(ytd_beta),
+                    "riskEfficiencyVol": float(risk_adj_vol),
+                    "riskEfficiencyBeta": float(risk_adj_beta)
                 },
                 "leverage": {
                     "Long_Exp": float(metrics_calc['Leverage_Stats']['Long_Exp']),

@@ -108,8 +108,24 @@ export const Dashboard: React.FC = () => {
                 </div>
 
                 {/* PREMIUM STATS BAR (YTD & Benchmark Comparison) */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-white/5 rounded-xl border border-white/10 p-4 backdrop-blur-md">
-                    <div className="flex flex-col border-r border-white/10 pr-4 last:border-0">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 bg-white/5 rounded-xl border border-white/10 p-4 backdrop-blur-md">
+                    <div className="flex flex-col border-r border-white/10 pr-4 last:border-0 hidden md:flex">
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Market Conditions</span>
+                        <div className="mt-1">
+                            <div className="flex justify-between text-xs mb-1">
+                                <span className="text-gray-400">YTD Beta</span>
+                                <span className="text-white font-mono">{formatNumber(vitals.ytdBeta)}</span>
+                            </div>
+                            <div className="flex justify-between text-xs">
+                                <span className="text-gray-400">Regime</span>
+                                <span className={cn("font-mono", vitals.ytdBeta > 1 ? "text-amber-400" : "text-blue-400")}>
+                                    {vitals.ytdBeta > 1 ? "Aggressive" : "Defensive"}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col border-r border-white/10 pr-4 last:border-0 pl-4">
                         <span className="text-xs text-muted-foreground uppercase tracking-wider">2026 YTD Return</span>
                         <div className="flex items-baseline gap-2 mt-1">
                             <span className={cn("text-2xl font-bold", vitals.ytdReturn >= 0 ? "text-emerald-400" : "text-rose-400")}>
@@ -127,16 +143,16 @@ export const Dashboard: React.FC = () => {
                         </div>
                     </div>
                     <div className="flex flex-col border-r border-white/10 pr-4 last:border-0 pl-4">
-                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Volatility Spread</span>
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider">YTD Efficiency (Ret/Vol)</span>
                         <div className="flex items-baseline gap-2 mt-1">
-                            <span className="text-2xl font-bold text-white">
-                                {formatPercent(vitals.annualVol)}
+                            <span className={cn("text-2xl font-bold", vitals.riskEfficiencyVol > 1 ? "text-emerald-400" : "text-white")}>
+                                {formatNumber(vitals.riskEfficiencyVol)}
                             </span>
-                            <span className="text-xs text-muted-foreground">vs {formatPercent(vitals.benchmarkVol)} (SPY)</span>
+                            <span className="text-xs text-muted-foreground">Unit Return</span>
                         </div>
                     </div>
                     <div className="flex flex-col pl-4">
-                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Sharpe Comparison</span>
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Sharpe (Hist Avg)</span>
                         <div className="flex items-baseline gap-2 mt-1">
                             <span className="text-2xl font-bold text-amber-500">
                                 {formatNumber(vitals.sharpe)}

@@ -11,6 +11,9 @@ export interface Vitals {
     benchmarkYtd: number;
     benchmarkVol: number;
     benchmarkSharpe: number;
+    ytdBeta: number;
+    riskEfficiencyVol: number;
+    riskEfficiencyBeta: number;
 }
 
 export interface LeverageStats {
