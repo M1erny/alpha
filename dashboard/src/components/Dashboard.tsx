@@ -21,30 +21,36 @@ export const Dashboard: React.FC = () => {
     const [heatmapPeriod, setHeatmapPeriod] = useState<'ytd' | 'r1y' | 'r3y'>('ytd');
 
     useEffect(() => {
+        let isActive = true;
         const pollStatus = async () => {
+            if (!isActive) return;
             try {
-                const statusRes = await fetch('http://localhost:8000/api/status');
+                // Change localhost to 127.0.0.1 to avoid IPv6 resolution delays on Windows
+                const statusRes = await fetch('http://127.0.0.1:8000/api/status');
                 const statusData = await statusRes.json();
 
                 if (statusData.state === 'ready') {
+                    setStatusMsg("Loading Metrics...");
                     const metricsRes = await fetchDashboardData();
                     setData(metricsRes);
                     setLoading(false);
                 } else if (statusData.state === 'error') {
                     setStatusMsg(`Error: ${statusData.message}`);
                 } else {
-                    setStatusMsg(statusData.message || "Warming up risk engines...");
+                    setStatusMsg(statusData.message || "Calculating Risk...");
                     setTimeout(pollStatus, 1000);
                 }
             } catch (e) {
                 console.error("Backend offline?", e);
-                setStatusMsg("Connecting to Risk Backend...");
+                setStatusMsg("Connecting to Backend (127.0.0.1:8000)...");
                 setTimeout(pollStatus, 2000);
             }
         };
 
+        setStatusMsg("Establishing Connection...");
         pollStatus();
-    }, [retryCount]);
+        return () => { isActive = false; };
+    }, []);
 
     const formatPercent = (val: number | undefined) => typeof val === 'number' ? `${(val * 100).toFixed(2)}%` : 'N/A';
     const formatNumber = (val: number | undefined) => typeof val === 'number' ? val.toFixed(2) : 'N/A';
@@ -283,26 +289,30 @@ export const Dashboard: React.FC = () => {
                         <div className="flex-1 min-h-0">
                             <ResponsiveContainer width="100%" height="100%">
                                 <Treemap
-                                    data={riskAttribution.map(item => {
-                                        const retData = periodicReturns.find(p => p.ticker === item.ticker);
-                                        // Default to 0 if not found
-                                        let val = 0;
-                                        if (retData) {
-                                            if (heatmapPeriod === 'ytd') val = retData.ytd;
-                                            if (heatmapPeriod === 'r1y') val = retData.r1y || 0;
-                                            if (heatmapPeriod === 'r3y') val = retData.r3y || 0;
-                                        }
-                                        return {
-                                            name: item.ticker,
-                                            size: Math.abs(item.weight), // Size by absolute weight
-                                            value: val // Value is return (for color)
-                                        };
-                                    }).filter(x => x.size > 0.01)} // Filter small strings
+                                    data={[{
+                                        name: 'Portfolio',
+                                        children: riskAttribution.map(item => {
+                                            const retData = periodicReturns.find(p => p.ticker === item.ticker);
+                                            let val = 0;
+                                            if (retData) {
+                                                if (heatmapPeriod === 'ytd') val = retData.ytd;
+                                                if (heatmapPeriod === 'r1y') val = retData.r1y || 0;
+                                                if (heatmapPeriod === 'r3y') val = retData.r3y || 0;
+                                            }
+                                            return {
+                                                name: item.ticker,
+                                                size: Math.abs(item.weight),
+                                                value: val
+                                            };
+                                        }).filter(x => x.size > 0.005)
+                                    }]}
                                     dataKey="size"
                                     aspectRatio={4 / 3}
                                     stroke="#0f172a" // Gap color matches bg
                                     content={(props: any) => {
-                                        const { x, y, width, height, payload, name, value } = props;
+                                        const { x, y, width, height, payload, name, value, depth } = props;
+                                        // Ignore Root Node
+                                        if (depth < 2 && name === 'Portfolio') return <g />;
                                         if (!payload || !name) return <g />;
 
                                         // Color scale: Red (-20%) to Green (+20%)
@@ -413,6 +423,6 @@ export const Dashboard: React.FC = () => {
                 </div>
 
             </div>
-        </div>
+        </div >
     );
 };

@@ -68,7 +68,7 @@ export interface FullRiskReport {
 
 export const fetchDashboardData = async (): Promise<FullRiskReport | null> => {
     try {
-        const response = await fetch('http://localhost:8000/api/metrics');
+        const response = await fetch('http://127.0.0.1:8000/api/metrics');
         if (!response.ok) {
             // Log detailed error for debugging
             const text = await response.text();

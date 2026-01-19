@@ -140,19 +140,30 @@ class PortfolioManager:
             # --- PREPARE API RESPONSE ---
             # We construct the response dict here so the API call is instant
             
+            # Helper for JSON safety
+            def safe_float(val):
+                if val is None: return 0.0
+                try:
+                    v = float(val)
+                    if np.isnan(v) or np.isinf(v):
+                        return 0.0
+                    return v
+                except:
+                    return 0.0
+
             # 1. Risk Attribution
             risk_attr = []
             for ticker, stats in metrics_calc['Risk_Attribution'].items():
                 risk_attr.append({
                     "ticker": ticker,
-                    "weight": stats['Weight'],
-                    "pctRisk": stats['Pct_Risk'],
-                    "mctr": stats['MCTR']
+                    "weight": safe_float(stats.get('Weight', 0)),
+                    "pctRisk": safe_float(stats.get('Pct_Risk', 0)),
+                    "mctr": safe_float(stats.get('MCTR', 0))
                 })
             risk_attr.sort(key=lambda x: x["pctRisk"], reverse=True)
 
             # 2. Stress Tests
-            stress_list = [{"scenario": k, "impact": v} for k, v in stress_results.items()]
+            stress_list = [{"scenario": k, "impact": safe_float(v)} for k, v in stress_results.items()]
 
             # 3. Periodic + YTD for Heatmap
             periodic_list = []
@@ -160,8 +171,8 @@ class PortfolioManager:
             # Pre-calc YTD for all assets
             ytd_assets = {}
             for ticker in usd_prices.columns:
-                series = usd_prices[ticker]
-                # Slice from 2026-01-01
+                series = usd_prices[ticker].copy()
+                # Force naive index
                 if series.index.tz is not None:
                     series.index = series.index.tz_localize(None)
                 
@@ -169,17 +180,21 @@ class PortfolioManager:
                 if not ytd_series.empty:
                     # Total return = (End / Start) - 1
                     ytd_ret = (ytd_series.iloc[-1] / ytd_series.iloc[0]) - 1
-                    ytd_assets[ticker] = ytd_ret
+                    ytd_assets[ticker] = safe_float(ytd_ret)
                 else:
+                    # Fallback to last available if very close? or just 0
                     ytd_assets[ticker] = 0.0
+
+            # Debug YTD
+            print(f"[PM] Calc YTD for {len(usd_prices.columns)} assets. Sample (AFRM): {ytd_assets.get('AFRM', 'N/A')}")
 
             for ticker, row in periodic_rets.iterrows():
                 periodic_list.append({
                     "ticker": ticker,
-                    "r1y": row['1Y'] if not pd.isna(row['1Y']) else None,
-                    "r3y": row['3Y'] if not pd.isna(row['3Y']) else None,
-                    "r5y": row['5Y'] if not pd.isna(row['5Y']) else None,
-                    "ytd": ytd_assets.get(ticker, 0.0)
+                    "r1y": safe_float(row['1Y']) if not pd.isna(row['1Y']) else None,
+                    "r3y": safe_float(row['3Y']) if not pd.isna(row['3Y']) else None,
+                    "r5y": safe_float(row['5Y']) if not pd.isna(row['5Y']) else None,
+                    "ytd": safe_float(ytd_assets.get(ticker, 0.0))
                 })
 
             # 4. Monte Carlo
@@ -190,7 +205,12 @@ class PortfolioManager:
                 p50 = np.percentile(mc_paths, 50, axis=0)
                 p95 = np.percentile(mc_paths, 95, axis=0)
                 for t in range(days):
-                    mc_list.append({"day": t, "p05": p05[t], "p50": p50[t], "p95": p95[t]})
+                    mc_list.append({
+                        "day": t, 
+                        "p05": safe_float(p05[t]), 
+                        "p50": safe_float(p50[t]), 
+                        "p95": safe_float(p95[t])
+                    })
 
             # 5. History
             history_list = []
@@ -200,37 +220,37 @@ class PortfolioManager:
             for date in portfolio_cum.index:
                 history_list.append({
                     "date": date.strftime('%Y-%m-%d'),
-                    "portfolio": float(portfolio_cum.loc[date]),
-                    "benchmark": float(benchmark_cum.loc[date]),
-                    "drawdown": float(drawdown_stream.loc[date])
+                    "portfolio": safe_float(portfolio_cum.loc[date]),
+                    "benchmark": safe_float(benchmark_cum.loc[date]),
+                    "drawdown": safe_float(drawdown_stream.loc[date])
                 })
 
             self.metrics = {
                 "vitals": {
-                    "beta": float(metrics_calc['Beta']),
-                    "annualReturn": float(metrics_calc['Annual_Return']),
-                    "annualVol": float(metrics_calc['Annual_Vol']),
-                    "sharpe": float(metrics_calc['Sharpe']),
-                    "sortino": float(metrics_calc['Sortino']),
-                    "maxDrawdown": float(metrics_calc['Max_Drawdown']),
-                    "var95": float(metrics_calc['VaR_95']),
-                    "cvar95": float(metrics_calc['CVaR_95']),
+                    "beta": safe_float(metrics_calc['Beta']),
+                    "annualReturn": safe_float(metrics_calc['Annual_Return']),
+                    "annualVol": safe_float(metrics_calc['Annual_Vol']),
+                    "sharpe": safe_float(metrics_calc['Sharpe']),
+                    "sortino": safe_float(metrics_calc['Sortino']),
+                    "maxDrawdown": safe_float(metrics_calc['Max_Drawdown']),
+                    "var95": safe_float(metrics_calc['VaR_95']),
+                    "cvar95": safe_float(metrics_calc['CVaR_95']),
                     
                     # New Stats
-                    "ytdReturn": float(ytd_portfolio),
-                    "benchmarkYtd": float(ytd_benchmark),
-                    "benchmarkVol": float(bench_vol),
-                    "benchmarkSharpe": float(bench_sharpe),
+                    "ytdReturn": safe_float(ytd_portfolio),
+                    "benchmarkYtd": safe_float(ytd_benchmark),
+                    "benchmarkVol": safe_float(bench_vol),
+                    "benchmarkSharpe": safe_float(bench_sharpe),
                     
                     # Risk Efficiency
-                    "ytdBeta": float(ytd_beta),
-                    "riskEfficiencyVol": float(risk_adj_vol),
-                    "riskEfficiencyBeta": float(risk_adj_beta)
+                    "ytdBeta": safe_float(ytd_beta),
+                    "riskEfficiencyVol": safe_float(risk_adj_vol),
+                    "riskEfficiencyBeta": safe_float(risk_adj_beta)
                 },
                 "leverage": {
-                    "Long_Exp": float(metrics_calc['Leverage_Stats']['Long_Exp']),
-                    "Short_Exp": float(metrics_calc['Leverage_Stats']['Short_Exp']),
-                    "Daily_Drag": float(metrics_calc['Leverage_Stats']['Daily_Drag'])
+                    "Long_Exp": safe_float(metrics_calc['Leverage_Stats']['Long_Exp']),
+                    "Short_Exp": safe_float(metrics_calc['Leverage_Stats']['Short_Exp']),
+                    "Daily_Drag": safe_float(metrics_calc['Leverage_Stats']['Daily_Drag'])
                 },
                 "riskAttribution": risk_attr,
                 "stressTests": stress_list,
