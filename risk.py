@@ -377,6 +377,8 @@ def calculate_risk_metrics(price_df):
         'Leverage_Stats': {
             'Long_Exp': total_long_weight,
             'Short_Exp': total_short_weight,
+            'Gross_Exp': total_long_weight + total_short_weight,
+            'Net_Exp': total_long_weight - total_short_weight,
             'Daily_Drag': total_daily_drag
         }
     }

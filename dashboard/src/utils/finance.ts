@@ -28,6 +28,8 @@ export interface Vitals {
 export interface LeverageStats {
     Long_Exp: number;
     Short_Exp: number;
+    Gross_Exp: number;
+    Net_Exp: number;
     Daily_Drag: number;
 }
 

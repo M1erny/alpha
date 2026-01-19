@@ -8,7 +8,7 @@ import {
     PieChart, AlertTriangle, Zap, Clock
 } from 'lucide-react';
 import {
-    ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, AreaChart, Area,
+    ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip,
     CartesianGrid, Legend, Treemap
 } from 'recharts';
 import { cn } from '../lib/utils';
@@ -81,7 +81,7 @@ export const Dashboard: React.FC = () => {
         )
     }
 
-    const { vitals, leverage, riskAttribution, stressTests, monteCarlo, history, periodicReturns } = data;
+    const { vitals, leverage, riskAttribution, stressTests, history, periodicReturns } = data;
 
     return (
         <div className="min-h-screen bg-background text-foreground p-6 md:p-8">
@@ -208,35 +208,19 @@ export const Dashboard: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* 2. Monte Carlo Cone */}
+                    {/* 2. Exposure History (Replacing Monte Carlo) */}
                     <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-lg flex flex-col">
                         <h3 className="text-lg font-semibold text-white mb-4 flex items-center justify-between">
-                            Monte Carlo Projection
-                            <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded">60 Days</span>
+                            Exposure Over Time
+                            <span className="text-xs bg-emerald-500/20 text-emerald-300 px-2 py-1 rounded">6Y</span>
                         </h3>
-                        <div className="flex-1 min-h-0">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={monteCarlo}>
-                                    <defs>
-                                        <linearGradient id="cone" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                                        </linearGradient>
-                                    </defs>
-                                    <XAxis dataKey="day" hide />
-                                    <YAxis domain={['auto', 'auto']} hide />
-                                    <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155' }} />
-                                    {/* Confidence Interval */}
-                                    <Area type="monotone" dataKey="p95" stroke="none" fill="none" />
-                                    <Area type="monotone" dataKey="p05" stroke="none" fill="url(#cone)" />
-                                    {/* Median Path */}
-                                    <Line type="monotone" dataKey="p50" stroke="#3b82f6" strokeWidth={2} dot={false} />
-                                </AreaChart>
-                            </ResponsiveContainer>
+                        <div className="flex-1 min-h-0 flex items-center justify-center">
+                            <div className="text-center text-gray-400">
+                                <p className="text-sm">Gross: {formatPercent(leverage.Gross_Exp)}</p>
+                                <p className="text-sm">Net: {formatPercent(leverage.Net_Exp)}</p>
+                                <p className="text-xs mt-2 text-gray-500">Historical chart coming soon</p>
+                            </div>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-2 text-center">
-                            Simulated future paths (Geometric Brownian Motion)
-                        </p>
                     </div>
                 </div>
 
@@ -395,33 +379,34 @@ export const Dashboard: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* 3. Risk Attribution */}
+                    {/* 3. Risk Attribution Table */}
                     <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-lg flex flex-col">
                         <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                            <PieChart className="h-4 w-4" /> Top Risk Drivers (MCTR)
+                            <PieChart className="h-4 w-4" /> Position Summary
                         </h3>
-                        <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
-                            {riskAttribution.slice(0, 8).map(item => (
-                                <div key={item.ticker} className="mb-4 last:mb-0">
-                                    <div className="flex justify-between items-baseline mb-1">
-                                        <div className="flex items-center gap-2">
-                                            <span className="font-medium text-white">{item.ticker}</span>
-                                            <span className="text-xs text-muted-foreground px-1.5 py-0.5 bg-white/5 rounded">
-                                                {formatPercent(item.weight)}
-                                            </span>
-                                        </div>
-                                        <span className="text-sm font-mono text-rose-300">
-                                            {formatPercent(item.pctRisk)} Risk
-                                        </span>
-                                    </div>
-                                    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                                        <div
-                                            className="h-full bg-rose-500 rounded-full"
-                                            style={{ width: `${Math.min(Math.abs(item.pctRisk * 100 * 2), 100)}%` }}
-                                        />
-                                    </div>
-                                </div>
-                            ))}
+                        <div className="flex-1 overflow-y-auto custom-scrollbar">
+                            <table className="w-full text-sm">
+                                <thead className="text-left text-gray-400 border-b border-white/10">
+                                    <tr>
+                                        <th className="pb-2">Ticker</th>
+                                        <th className="pb-2 text-right">Weight</th>
+                                        <th className="pb-2 text-right">Risk %</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {riskAttribution.slice(0, 10).map(item => (
+                                        <tr key={item.ticker} className="border-b border-white/5 hover:bg-white/5">
+                                            <td className="py-2 font-medium text-white">{item.ticker}</td>
+                                            <td className={`py-2 text-right font-mono ${item.weight > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                {item.weight > 0 ? '+' : ''}{formatPercent(item.weight)}
+                                            </td>
+                                            <td className="py-2 text-right font-mono text-amber-400">
+                                                {formatPercent(Math.abs(item.pctRisk))}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
 
