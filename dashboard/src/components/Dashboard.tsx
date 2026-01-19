@@ -97,8 +97,13 @@ export const Dashboard: React.FC = () => {
                             <LayoutDashboard className="h-8 w-8 text-primary" />
                             Institutional Risk Dashboard
                         </h1>
-                        <p className="text-muted-foreground mt-1">
-                            Live quantitative analysis • {history[history.length - 1]?.date}
+                        <p className="text-muted-foreground mt-1 flex items-center gap-2">
+                            <span className="bg-white/10 px-2 py-0.5 rounded text-xs text-white">
+                                {vitals.periodInfo?.Years} Years Data
+                            </span>
+                            <span>
+                                {vitals.periodInfo?.Start_Date} — {vitals.periodInfo?.End_Date}
+                            </span>
                         </p>
                     </div>
                     <div className="flex gap-4 text-sm text-right">
@@ -141,11 +146,12 @@ export const Dashboard: React.FC = () => {
                         </div>
                     </div>
                     <div className="flex flex-col border-r border-white/10 pr-4 last:border-0 pl-4">
-                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Alpha (YTD)</span>
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider text-amber-400 font-bold">Jensen's Alpha (CAPM)</span>
                         <div className="flex items-baseline gap-2 mt-1">
-                            <span className={cn("text-2xl font-bold", (vitals.ytdReturn - vitals.benchmarkYtd) >= 0 ? "text-emerald-400" : "text-rose-400")}>
-                                {(vitals.ytdReturn - vitals.benchmarkYtd) > 0 ? "+" : ""}{formatPercent(vitals.ytdReturn - vitals.benchmarkYtd)}
+                            <span className={cn("text-2xl font-bold", vitals.jensensAlpha >= 0 ? "text-emerald-400" : "text-rose-400")}>
+                                {vitals.jensensAlpha > 0 ? "+" : ""}{formatPercent(vitals.jensensAlpha)}
                             </span>
+                            <span className="text-xs text-muted-foreground">Annualized</span>
                         </div>
                     </div>
                     <div className="flex flex-col border-r border-white/10 pr-4 last:border-0 pl-4">

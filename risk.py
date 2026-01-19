@@ -249,12 +249,41 @@ def calculate_risk_metrics(price_df):
 
             total_risk_sum += mctr
             
+    # --- 4.5 CAPM Metrics (Jensen's Alpha) ---
+    # Alpha = Rp - (Rf + Beta * (Rm - Rf))
+    # We need annualized benchmark return for this
+    avg_bench_ret = np.mean(benchmark_ret)
+    annual_bench_ret = avg_bench_ret * ANNUAL_FACTOR
+    
+    expected_return = rf_rate + portfolio_beta * (annual_bench_ret - rf_rate)
+    jensens_alpha = annual_ret - expected_return
+    
+    # Metadata for transparency
+    calc_start_date = returns_df.index[0].strftime('%Y-%m-%d')
+    calc_end_date = returns_df.index[-1].strftime('%Y-%m-%d')
+    period_years = (returns_df.index[-1] - returns_df.index[0]).days / 365.25
+
     # --- 5. YTD METRICS ---
     current_year = datetime.now().year
     ytd_start = f"{current_year}-01-01"
     
     # Filter for YTD data
+    with open("debug_risk.txt", "w") as f:
+        f.write(f"DEBUG: YTD Start: {ytd_start}\n")
+        f.write(f"DEBUG: Data Range: {portfolio_daily_ret.index[0]} to {portfolio_daily_ret.index[-1]}\n")
+        f.write(f"DEBUG: Sample Index: {portfolio_daily_ret.index[:5]}\n")
+    
+    # Ensure timezone handling works (strip tz if present for simple comparison)
+    if hasattr(portfolio_daily_ret.index, 'tz'):
+        portfolio_daily_ret.index = portfolio_daily_ret.index.tz_localize(None)
+    if hasattr(benchmark_ret.index, 'tz'):
+        benchmark_ret.index = benchmark_ret.index.tz_localize(None)
+
     ytd_portfolio = portfolio_daily_ret[portfolio_daily_ret.index >= ytd_start]
+    
+    with open("debug_risk.txt", "a") as f:
+        f.write(f"DEBUG: YTD Rows Found: {len(ytd_portfolio)}\n")
+    
     ytd_benchmark = benchmark_ret[benchmark_ret.index >= ytd_start]
     
     if not ytd_portfolio.empty:
@@ -284,6 +313,11 @@ def calculate_risk_metrics(price_df):
         risk_efficiency = 0.0
         bench_sharpe = 0.0
 
+    with open("debug_risk.txt", "a") as f:
+        f.write(f"DEBUG: YTD Return: {ytd_return}\n")
+        f.write(f"DEBUG: Bench YTD: {benchmark_ytd}\n")
+        f.write(f"DEBUG: YTD Portfolio Sample: {ytd_portfolio.tolist()[:5]}\n")
+
     return {
         'Beta': portfolio_beta,
         'Annual_Return': annual_ret,
@@ -293,6 +327,12 @@ def calculate_risk_metrics(price_df):
         'VaR_95': var_95,
         'CVaR_95': cvar_95,
         'Max_Drawdown': max_drawdown,
+        'Jensens_Alpha': jensens_alpha,
+        'Period_Info': {
+            'Start_Date': calc_start_date,
+            'End_Date': calc_end_date,
+            'Years': round(period_years, 1)
+        },
         'YTD_Return': ytd_return,
         'Benchmark_YTD': benchmark_ytd,
         'YTD_Beta': ytd_beta,

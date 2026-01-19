@@ -1,5 +1,8 @@
 import sys
 import os
+
+# Force unbuffered output
+sys.stdout.reconfigure(line_buffering=True)
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
@@ -51,24 +54,33 @@ async def get_metrics():
         periodic_rets = risk.calculate_periodic_returns(usd_prices)
 
         # 3. Format Response
+        def to_float(val):
+            if val is None: return None
+            try:
+                return float(val)
+            except:
+                return None
+
         # 3. Format Response
         response = {
             "vitals": {
-                "beta": metrics['Beta'],
-                "annualReturn": metrics['Annual_Return'],
-                "annualVol": metrics['Annual_Vol'],
-                "sharpe": metrics['Sharpe'],
-                "sortino": metrics['Sortino'],
-                "maxDrawdown": metrics['Max_Drawdown'],
-                "var95": metrics['VaR_95'],
-                "cvar95": metrics['CVaR_95'],
+                "beta": to_float(metrics['Beta']),
+                "annualReturn": to_float(metrics['Annual_Return']),
+                "annualVol": to_float(metrics['Annual_Vol']),
+                "sharpe": to_float(metrics['Sharpe']),
+                "sortino": to_float(metrics['Sortino']),
+                "maxDrawdown": to_float(metrics['Max_Drawdown']),
+                "var95": to_float(metrics['VaR_95']),
+                "cvar95": to_float(metrics['CVaR_95']),
+                "jensensAlpha": to_float(metrics.get('Jensens_Alpha')),
+                "periodInfo": metrics.get('Period_Info'),
                 
                 # New YTD Fields
-                "ytdReturn": metrics.get('YTD_Return'),
-                "benchmarkYtd": metrics.get('Benchmark_YTD'),
-                "ytdBeta": metrics.get('YTD_Beta'),
-                "riskEfficiencyVol": metrics.get('Risk_Efficiency'),
-                "benchmarkSharpe": metrics.get('Benchmark_Sharpe'),
+                "ytdReturn": to_float(metrics.get('YTD_Return')),
+                "benchmarkYtd": to_float(metrics.get('Benchmark_YTD')),
+                "ytdBeta": to_float(metrics.get('YTD_Beta')),
+                "riskEfficiencyVol": to_float(metrics.get('Risk_Efficiency')),
+                "benchmarkSharpe": to_float(metrics.get('Benchmark_Sharpe')),
             },
             "leverage": metrics['Leverage_Stats'],
             "riskAttribution": [],

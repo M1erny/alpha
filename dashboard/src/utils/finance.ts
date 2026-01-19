@@ -1,3 +1,9 @@
+export interface PeriodInfo {
+    Start_Date: string;
+    End_Date: string;
+    Years: number;
+}
+
 export interface Vitals {
     beta: number;
     annualReturn: number;
@@ -14,6 +20,8 @@ export interface Vitals {
     ytdBeta: number;
     riskEfficiencyVol: number;
     riskEfficiencyBeta: number;
+    jensensAlpha: number;
+    periodInfo: PeriodInfo;
 }
 
 export interface LeverageStats {
