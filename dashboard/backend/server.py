@@ -1,23 +1,168 @@
 import sys
 import os
-from fastapi import FastAPI
+import asyncio
+from fastapi import FastAPI, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 import pandas as pd
 import numpy as np
+from datetime import datetime
 
-# Add the directory containing risk.py to path
-RISK_DIR = r"c:\Users\Tomek\.antigravity\alpha"
-sys.path.append(RISK_DIR)
+# --- CONFIGURATION ---
+# Determine path to risk.py (Parent of current project root)
+# Current: .../alpha/dashboard/backend/server.py
+# Risk.py: .../alpha/risk.py
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+RISK_DIR = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
 
-# Import risk.py
-# We use a try-except block to handle potential import errors gracefully
+if RISK_DIR not in sys.path:
+    sys.path.append(RISK_DIR)
+
 try:
     import risk
 except ImportError as e:
-    print(f"Error importing risk.py: {e}")
+    print(f"CRITICAL: Could not import risk.py from {RISK_DIR}. Error: {e}")
     risk = None
 
-app = FastAPI()
+# --- STATE MANAGEMENT ---
+class PortfolioManager:
+    def __init__(self):
+        self.state = "idle" # idle, loading, ready, error
+        self.message = "Waiting to start..."
+        self.last_update = None
+        self.metrics = None
+        self.history = None
+        self.error = None
+
+    async def hydrate(self):
+        if not risk:
+            self.state = "error"
+            self.message = "risk.py module missing"
+            return
+            
+        self.state = "loading"
+        self.message = "Connecting to Market Data..."
+        print(f"[PM] Starting hydration from {RISK_DIR}...")
+        
+        try:
+            # Run blocking I/O in a separate thread to not block the event loop
+            # fetch_data() can take 10-30s
+            loop = asyncio.get_event_loop()
+            
+            self.message = "Downloading Tickers (Yahoo Finance)..."
+            raw_prices, fx_rates = await loop.run_in_executor(None, risk.fetch_data)
+            
+            self.message = "Normalizing Currencies..."
+            usd_prices = await loop.run_in_executor(None, risk.normalize_to_base_currency, raw_prices, fx_rates)
+            
+            self.message = "Calculating Risk Metrics..."
+            metrics_calc = await loop.run_in_executor(None, risk.calculate_risk_metrics, usd_prices)
+            
+            # --- Advanced Models ---
+            self.message = "Running Monte Carlo Simulations..."
+            mc_paths = await loop.run_in_executor(None, risk.run_monte_carlo, metrics_calc, 500, 60)
+            
+            self.message = "Stress Testing..."
+            stress_results = await loop.run_in_executor(None, risk.stress_test_portfolio, metrics_calc)
+            
+            periodic_rets = await loop.run_in_executor(None, risk.calculate_periodic_returns, usd_prices)
+
+            # --- PREPARE API RESPONSE ---
+            # We construct the response dict here so the API call is instant
+            
+            # 1. Risk Attribution
+            risk_attr = []
+            for ticker, stats in metrics_calc['Risk_Attribution'].items():
+                risk_attr.append({
+                    "ticker": ticker,
+                    "weight": stats['Weight'],
+                    "pctRisk": stats['Pct_Risk'],
+                    "mctr": stats['MCTR']
+                })
+            risk_attr.sort(key=lambda x: x["pctRisk"], reverse=True)
+
+            # 2. Stress Tests
+            stress_list = [{"scenario": k, "impact": v} for k, v in stress_results.items()]
+
+            # 3. Periodic
+            periodic_list = []
+            for ticker, row in periodic_rets.iterrows():
+                periodic_list.append({
+                    "ticker": ticker,
+                    "r1y": row['1Y'] if not pd.isna(row['1Y']) else None,
+                    "r3y": row['3Y'] if not pd.isna(row['3Y']) else None,
+                    "r5y": row['5Y'] if not pd.isna(row['5Y']) else None,
+                })
+
+            # 4. Monte Carlo
+            mc_list = []
+            if mc_paths is not None:
+                days = mc_paths.shape[1]
+                p05 = np.percentile(mc_paths, 5, axis=0)
+                p50 = np.percentile(mc_paths, 50, axis=0)
+                p95 = np.percentile(mc_paths, 95, axis=0)
+                for t in range(days):
+                    mc_list.append({"day": t, "p05": p05[t], "p50": p50[t], "p95": p95[t]})
+
+            # 5. History
+            history_list = []
+            portfolio_cum = (1 + metrics_calc['Returns_Stream']).cumprod() * 1000
+            benchmark_cum = (1 + metrics_calc['Benchmark_Stream']).cumprod() * 1000
+            drawdown_stream = metrics_calc['Drawdown_Stream']
+            for date in portfolio_cum.index:
+                history_list.append({
+                    "date": date.strftime('%Y-%m-%d'),
+                    "portfolio": float(portfolio_cum.loc[date]),
+                    "benchmark": float(benchmark_cum.loc[date]),
+                    "drawdown": float(drawdown_stream.loc[date])
+                })
+
+            self.metrics = {
+                "vitals": {
+                    "beta": float(metrics_calc['Beta']),
+                    "annualReturn": float(metrics_calc['Annual_Return']),
+                    "annualVol": float(metrics_calc['Annual_Vol']),
+                    "sharpe": float(metrics_calc['Sharpe']),
+                    "sortino": float(metrics_calc['Sortino']),
+                    "maxDrawdown": float(metrics_calc['Max_Drawdown']),
+                    "var95": float(metrics_calc['VaR_95']),
+                    "cvar95": float(metrics_calc['CVaR_95']),
+                },
+                "leverage": {
+                    "Long_Exp": float(metrics_calc['Leverage_Stats']['Long_Exp']),
+                    "Short_Exp": float(metrics_calc['Leverage_Stats']['Short_Exp']),
+                    "Daily_Drag": float(metrics_calc['Leverage_Stats']['Daily_Drag'])
+                },
+                "riskAttribution": risk_attr,
+                "stressTests": stress_list,
+                "periodicReturns": periodic_list,
+                "monteCarlo": mc_list,
+                "history": history_list
+            }
+            
+            self.last_update = datetime.now()
+            self.state = "ready"
+            self.message = "System Online"
+            print("[PM] Hydration Complete.")
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self.state = "error"
+            self.error = str(e)
+            self.message = f"Failed: {str(e)}"
+
+# Singleton
+pm = PortfolioManager()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Kick off hydration
+    asyncio.create_task(pm.hydrate())
+    yield
+    # Shutdown logic if needed
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,109 +172,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/api/status")
+async def get_status():
+    return {
+        "state": pm.state,
+        "message": pm.message,
+        "last_update": pm.last_update,
+        "error": pm.error
+    }
+
 @app.get("/api/metrics")
 async def get_metrics():
-    if not risk:
-        return {"error": "risk.py not found or failed to import"}
+    if pm.state == "ready" and pm.metrics:
+        return pm.metrics
+    elif pm.state == "error":
+        return {"error": pm.error, "message": pm.message}
+    else:
+        # 503 Service Unavailable ideally, but let's just return a status dict
+        return {"status": "loading", "message": pm.message}
 
-    try:
-        # 1. Fetch and Calculate Base Metrics
-        raw_prices, fx_rates = risk.fetch_data()
-        usd_prices = risk.normalize_to_base_currency(raw_prices, fx_rates)
-        metrics = risk.calculate_risk_metrics(usd_prices)
-        
-        # 2. Run Advanced Models
-        stress_results = risk.stress_test_portfolio(metrics)
-        mc_paths = risk.run_monte_carlo(metrics, num_sims=500, days=60) # Reduced sims for speed
-        periodic_rets = risk.calculate_periodic_returns(usd_prices)
-
-        # 3. Format Response
-        response = {
-            "vitals": {
-                "beta": metrics['Beta'],
-                "annualReturn": metrics['Annual_Return'],
-                "annualVol": metrics['Annual_Vol'],
-                "sharpe": metrics['Sharpe'],
-                "sortino": metrics['Sortino'],
-                "maxDrawdown": metrics['Max_Drawdown'],
-                "var95": metrics['VaR_95'],
-                "cvar95": metrics['CVaR_95'],
-            },
-            "leverage": metrics['Leverage_Stats'],
-            "riskAttribution": [],
-            "stressTests": [],
-            "periodicReturns": [],
-            "monteCarlo": [],
-            "history": []
-        }
-
-        # Format Risk Attribution
-        for ticker, stats in metrics['Risk_Attribution'].items():
-            response["riskAttribution"].append({
-                "ticker": ticker,
-                "weight": stats['Weight'],
-                "pctRisk": stats['Pct_Risk'],
-                "mctr": stats['MCTR']
-            })
-        response["riskAttribution"].sort(key=lambda x: x["pctRisk"], reverse=True)
-
-        # Format Stress Tests
-        for scenario, impact in stress_results.items():
-            response["stressTests"].append({
-                "scenario": scenario,
-                "impact": impact
-            })
-
-        # Format Periodic Returns
-        # Periodic returns is a DataFrame: index=ticker, columns=['1Y', '3Y', '5Y']
-        for ticker, row in periodic_rets.iterrows():
-            response["periodicReturns"].append({
-                "ticker": ticker,
-                "r1y": row['1Y'] if not pd.isna(row['1Y']) else None,
-                "r3y": row['3Y'] if not pd.isna(row['3Y']) else None,
-                "r5y": row['5Y'] if not pd.isna(row['5Y']) else None,
-            })
-        
-        # Format Monte Carlo (Percentiles for Cone Chart)
-        if mc_paths is not None:
-            # mc_paths shape: (sims, days+1)
-            days = mc_paths.shape[1]
-            p05 = np.percentile(mc_paths, 5, axis=0)
-            p50 = np.percentile(mc_paths, 50, axis=0)
-            p95 = np.percentile(mc_paths, 95, axis=0)
-            
-            for t in range(days):
-                response["monteCarlo"].append({
-                    "day": t,
-                    "p05": p05[t],
-                    "p50": p50[t],
-                    "p95": p95[t]
-                })
-
-        # Format History (Cumulative 1000 base)
-        portfolio_cum = (1 + metrics['Returns_Stream']).cumprod() * 1000
-        benchmark_cum = (1 + metrics['Benchmark_Stream']).cumprod() * 1000
-        drawdown_stream = metrics['Drawdown_Stream']
-        
-        # Align indexes
-        common_idx = portfolio_cum.index
-        
-        # We'll limit history to optimize payload if needed, but for now send full
-        for date in common_idx:
-            date_str = date.strftime('%Y-%m-%d')
-            response["history"].append({
-                "date": date_str,
-                "portfolio": portfolio_cum.loc[date],
-                "benchmark": benchmark_cum.loc[date],
-                "drawdown": drawdown_stream.loc[date]
-            })
-
-        return response
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return {"error": str(e)}
+@app.post("/api/refresh")
+async def refresh_metrics(background_tasks: BackgroundTasks):
+    if pm.state == "loading":
+        return {"status": "busy", "message": "Already updating..."}
+    
+    background_tasks.add_task(pm.hydrate)
+    return {"status": "accepted", "message": "Refresh started"}
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,28 +1,49 @@
 import React, { useEffect, useState } from 'react';
 import {
-    fetchDashboardData, FullRiskReport
+    fetchDashboardData, type FullRiskReport
 } from '../utils/finance';
 import { MetricCard } from './MetricCard';
 import {
     LayoutDashboard, TrendingUp, Activity, Scale, ShieldCheck,
-    PieChart, AlertTriangle, Zap, BarChart3, Clock
+    PieChart, AlertTriangle, Zap, Clock
 } from 'lucide-react';
 import {
     ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, AreaChart, Area,
-    BarChart, Bar, Cell, CartesianGrid, Legend
+    CartesianGrid, Legend
 } from 'recharts';
 import { cn } from '../lib/utils';
 
 export const Dashboard: React.FC = () => {
     const [data, setData] = useState<FullRiskReport | null>(null);
     const [loading, setLoading] = useState(true);
+    const [statusMsg, setStatusMsg] = useState("Initializing...");
+    const [retryCount, setRetryCount] = useState(0);
 
     useEffect(() => {
-        fetchDashboardData().then(res => {
-            setData(res);
-            setLoading(false);
-        });
-    }, []);
+        const pollStatus = async () => {
+            try {
+                const statusRes = await fetch('http://localhost:8000/api/status');
+                const statusData = await statusRes.json();
+
+                if (statusData.state === 'ready') {
+                    const metricsRes = await fetchDashboardData();
+                    setData(metricsRes);
+                    setLoading(false);
+                } else if (statusData.state === 'error') {
+                    setStatusMsg(`Error: ${statusData.message}`);
+                } else {
+                    setStatusMsg(statusData.message || "Warming up risk engines...");
+                    setTimeout(pollStatus, 1000);
+                }
+            } catch (e) {
+                console.error("Backend offline?", e);
+                setStatusMsg("Connecting to Risk Backend...");
+                setTimeout(pollStatus, 2000);
+            }
+        };
+
+        pollStatus();
+    }, [retryCount]);
 
     const formatPercent = (val: number | undefined) => typeof val === 'number' ? `${(val * 100).toFixed(2)}%` : 'N/A';
     const formatNumber = (val: number | undefined) => typeof val === 'number' ? val.toFixed(2) : 'N/A';
@@ -30,9 +51,25 @@ export const Dashboard: React.FC = () => {
     if (loading || !data) {
         return (
             <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-                    <p className="text-muted-foreground animate-pulse">Running Risk Engine...</p>
+                {/* Fallback to dark background if Tailwind variable fails */}
+                <div className="absolute inset-0 bg-[#020617] -z-10" />
+
+                <div className="flex flex-col items-center gap-6 max-w-md text-center p-6 border border-white/10 rounded-xl bg-white/5 backdrop-blur">
+                    <div className="relative">
+                        <div className="h-16 w-16 animate-spin rounded-full border-4 border-emerald-500/30 border-t-emerald-500" />
+                        <div className="absolute inset-0 flex items-center justify-center font-mono text-xs text-emerald-500 font-bold">
+                            AI
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        <h2 className="text-xl font-semibold tracking-tight text-white">Institutional Risk Engine</h2>
+                        <p className="text-sm text-gray-400 font-mono bg-white/5 px-3 py-1 rounded-full animate-pulse border border-white/10">
+                            {statusMsg}
+                        </p>
+                    </div>
+                    <div className="text-xs text-gray-500 max-w-xs">
+                        Fetching 26+ live data points, calculating MCTR, running Monte Carlo simulations (60 days)...
+                    </div>
                 </div>
             </div>
         )
@@ -42,7 +79,10 @@ export const Dashboard: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-background text-foreground p-6 md:p-8">
-            <div className="mx-auto max-w-[1600px] space-y-8">
+            {/* Fallback bg */}
+            <div className="absolute inset-0 bg-[#020617] -z-20" />
+
+            <div className="mx-auto max-w-[1600px] space-y-8 relative z-10">
 
                 {/* Header */}
                 <div className="flex items-center justify-between">
@@ -90,7 +130,7 @@ export const Dashboard: React.FC = () => {
                                     <YAxis domain={['auto', 'auto']} tickFormatter={(v) => `$${v}`} stroke="#666" fontSize={11} tickLine={false} axisLine={false} />
                                     <Tooltip
                                         contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155' }}
-                                        formatter={(val: number) => [`$${val.toFixed(0)}`, '']}
+                                        formatter={(val: number | undefined) => [typeof val === 'number' ? `$${val.toFixed(0)}` : 'N/A', '']}
                                         labelStyle={{ color: '#94a3b8' }}
                                     />
                                     <Legend />
