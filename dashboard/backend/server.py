@@ -4,9 +4,27 @@ import asyncio
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+import pytz
+import requests 
 import pandas as pd
 import numpy as np
 from datetime import datetime
+
+# --- NOTIFICATION CONFIG (Action Required: Fill these details) ---
+NOTIFICATION_CONFIG = {
+    'enabled': True,
+    'provider': 'telegram', # Options: 'telegram' or 'pushover'
+    'telegram': {
+        'bot_token': 'YOUR_BOT_TOKEN_HERE',
+        'chat_id': 'YOUR_CHAT_ID_HERE'
+    },
+    'pushover': {
+        'user_key': 'YOUR_USER_KEY', 
+        'api_token': 'YOUR_API_TOKEN'
+    }
+}
 
 # --- CONFIGURATION ---
 # Determine path to risk.py (Parent of current project root)
@@ -263,6 +281,46 @@ class PortfolioManager:
             self.state = "ready"
             self.message = "System Online"
             print("[PM] Hydration Complete.")
+            
+            # SEND NOTIFICATION
+            msg = f"Alpha: {self.metrics['vitals'].get('alpha', 0):.2f}% | Beta: {self.metrics['vitals']['beta']:.2f} | Sharpe: {self.metrics['vitals']['sharpe']:.2f}"
+            msg += f"\nYTD: {self.metrics['vitals']['ytdReturn']:.2%} vs Bench: {self.metrics['vitals']['benchmarkYtd']:.2%}"
+            self.send_notification("Risk Engine Updated", msg)
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self.state = "error"
+            self.error = str(e)
+            self.message = f"Failed: {str(e)}"
+
+    def send_notification(self, title, message):
+        if not NOTIFICATION_CONFIG['enabled']: return
+
+        try:
+            if NOTIFICATION_CONFIG['provider'] == 'telegram':
+                token = NOTIFICATION_CONFIG['telegram']['bot_token']
+                chat_id = NOTIFICATION_CONFIG['telegram']['chat_id']
+                if 'YOUR_' in token: 
+                    print("[Notification] Telegram not configured.")
+                    return
+                url = f"https://api.telegram.org/bot{token}/sendMessage"
+                payload = {"chat_id": chat_id, "text": f"*{title}*\n{message}", "parse_mode": "Markdown"}
+                requests.post(url, json=payload, timeout=5)
+                
+            elif NOTIFICATION_CONFIG['provider'] == 'pushover':
+                user_key = NOTIFICATION_CONFIG['pushover']['user_key']
+                api_token = NOTIFICATION_CONFIG['pushover']['api_token']
+                if 'YOUR_' in user_key:
+                    print("[Notification] Pushover not configured.")
+                    return
+                url = "https://api.pushover.net/1/messages.json"
+                payload = {"token": api_token, "user": user_key, "title": title, "message": message}
+                requests.post(url, data=payload, timeout=5)
+                
+            print(f"[PM] Notification sent: {title}")
+        except Exception as e:
+            print(f"[PM] Failed to send notification: {e}")
 
         except Exception as e:
             import traceback
@@ -273,13 +331,25 @@ class PortfolioManager:
 
 # Singleton
 pm = PortfolioManager()
+scheduler = AsyncIOScheduler()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Kick off hydration
     asyncio.create_task(pm.hydrate())
+    
+    # Schedule Refresh Every 8 Hours (00:00, 08:00, 16:00 Warsaw Time)
+    try:
+        waw_tz = pytz.timezone('Europe/Warsaw')
+        scheduler.add_job(pm.hydrate, 'cron', hour='*/8', minute=0, timezone=waw_tz)
+        scheduler.start()
+        print("[Scheduler] Automated Refresh scheduled for every 8 hours (00:00, 08:00, 16:00 CET/CEST).")
+    except Exception as e:
+        print(f"[Scheduler] Failed to start: {e}")
+        
     yield
-    # Shutdown logic if needed
+    # Cleanup on shutdown
+    scheduler.shutdown()
 
 app = FastAPI(lifespan=lifespan)
 
