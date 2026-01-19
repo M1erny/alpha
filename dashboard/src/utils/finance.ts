@@ -7,6 +7,10 @@ export interface Vitals {
     maxDrawdown: number;
     var95: number;
     cvar95: number;
+    ytdReturn: number;
+    benchmarkYtd: number;
+    benchmarkVol: number;
+    benchmarkSharpe: number;
 }
 
 export interface LeverageStats {

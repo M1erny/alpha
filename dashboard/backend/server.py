@@ -67,6 +67,47 @@ class PortfolioManager:
             
             periodic_rets = await loop.run_in_executor(None, risk.calculate_periodic_returns, usd_prices)
 
+            # --- ADVANCED CALCULATIONS ---
+            # 0. YTD Calculations (2026)
+            start_ytd = pd.Timestamp("2026-01-01")
+            
+            # Get streams
+            port_stream = metrics_calc['Returns_Stream']
+            bench_stream = metrics_calc['Benchmark_Stream']
+
+            # Make TZ Naive to ensure slicing works
+            if port_stream.index.tz is not None:
+                port_stream.index = port_stream.index.tz_localize(None)
+            if bench_stream.index.tz is not None:
+                bench_stream.index = bench_stream.index.tz_localize(None)
+
+            # Helper to calc total return from daily rets
+            def calc_period_return(daily_rets, start_date):
+                # Ensure start_date is within range logic or just slice
+                period_rets = daily_rets[daily_rets.index >= start_date]
+                if period_rets.empty: return 0.0
+                return (1 + period_rets).prod() - 1
+
+            ytd_portfolio = calc_period_return(port_stream, start_ytd)
+            ytd_benchmark = calc_period_return(bench_stream, start_ytd)
+            
+            # Benchmark specific stats (Robust Pandas Methods)
+            bench_vol = bench_stream.std() * np.sqrt(252)
+            rf_rate = 0.04
+            bench_annual_ret = bench_stream.mean() * 252
+            
+            # Safety checks for NaN/Zero
+            if pd.isna(bench_vol) or bench_vol == 0:
+                bench_sharpe = 0.0
+                bench_vol = 0.0 if pd.isna(bench_vol) else bench_vol
+            else:
+                bench_sharpe = (bench_annual_ret - rf_rate) / bench_vol
+
+            # Debug Logs
+            print(f"[PM] Data Range: {port_stream.index[0]} to {port_stream.index[-1]}")
+            print(f"[PM] YTD Portfolio: {ytd_portfolio:.2%}, Bench: {ytd_benchmark:.2%}")
+            print(f"[PM] Bench Vol: {bench_vol:.2%}, Sharpe: {bench_sharpe:.2f}")
+
             # --- PREPARE API RESPONSE ---
             # We construct the response dict here so the API call is instant
             
@@ -127,6 +168,12 @@ class PortfolioManager:
                     "maxDrawdown": float(metrics_calc['Max_Drawdown']),
                     "var95": float(metrics_calc['VaR_95']),
                     "cvar95": float(metrics_calc['CVaR_95']),
+                    
+                    # New Stats
+                    "ytdReturn": float(ytd_portfolio),
+                    "benchmarkYtd": float(ytd_benchmark),
+                    "benchmarkVol": float(bench_vol),
+                    "benchmarkSharpe": float(bench_sharpe)
                 },
                 "leverage": {
                     "Long_Exp": float(metrics_calc['Leverage_Stats']['Long_Exp']),

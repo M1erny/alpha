@@ -107,6 +107,45 @@ export const Dashboard: React.FC = () => {
                     </div>
                 </div>
 
+                {/* PREMIUM STATS BAR (YTD & Benchmark Comparison) */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-white/5 rounded-xl border border-white/10 p-4 backdrop-blur-md">
+                    <div className="flex flex-col border-r border-white/10 pr-4 last:border-0">
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider">2026 YTD Return</span>
+                        <div className="flex items-baseline gap-2 mt-1">
+                            <span className={cn("text-2xl font-bold", vitals.ytdReturn >= 0 ? "text-emerald-400" : "text-rose-400")}>
+                                {vitals.ytdReturn > 0 ? "+" : ""}{formatPercent(vitals.ytdReturn)}
+                            </span>
+                            <span className="text-xs text-muted-foreground">vs {formatPercent(vitals.benchmarkYtd)} (SPY)</span>
+                        </div>
+                    </div>
+                    <div className="flex flex-col border-r border-white/10 pr-4 last:border-0 pl-4">
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Alpha (YTD)</span>
+                        <div className="flex items-baseline gap-2 mt-1">
+                            <span className={cn("text-2xl font-bold", (vitals.ytdReturn - vitals.benchmarkYtd) >= 0 ? "text-emerald-400" : "text-rose-400")}>
+                                {(vitals.ytdReturn - vitals.benchmarkYtd) > 0 ? "+" : ""}{formatPercent(vitals.ytdReturn - vitals.benchmarkYtd)}
+                            </span>
+                        </div>
+                    </div>
+                    <div className="flex flex-col border-r border-white/10 pr-4 last:border-0 pl-4">
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Volatility Spread</span>
+                        <div className="flex items-baseline gap-2 mt-1">
+                            <span className="text-2xl font-bold text-white">
+                                {formatPercent(vitals.annualVol)}
+                            </span>
+                            <span className="text-xs text-muted-foreground">vs {formatPercent(vitals.benchmarkVol)} (SPY)</span>
+                        </div>
+                    </div>
+                    <div className="flex flex-col pl-4">
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Sharpe Comparison</span>
+                        <div className="flex items-baseline gap-2 mt-1">
+                            <span className="text-2xl font-bold text-amber-500">
+                                {formatNumber(vitals.sharpe)}
+                            </span>
+                            <span className="text-xs text-muted-foreground">vs {formatNumber(vitals.benchmarkSharpe)} (SPY)</span>
+                        </div>
+                    </div>
+                </div>
+
                 {/* ROW 1: VITALS (6 Key Metrics) */}
                 <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
                     <MetricCard title="Annual Return" value={formatPercent(vitals.annualReturn)} icon={<TrendingUp className="h-4 w-4 text-emerald-500" />} trend="up" />
