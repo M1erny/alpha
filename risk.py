@@ -247,6 +247,43 @@ def calculate_risk_metrics(price_df):
             }
             total_risk_sum += mctr
 
+            total_risk_sum += mctr
+            
+    # --- 5. YTD METRICS ---
+    current_year = datetime.now().year
+    ytd_start = f"{current_year}-01-01"
+    
+    # Filter for YTD data
+    ytd_portfolio = portfolio_daily_ret[portfolio_daily_ret.index >= ytd_start]
+    ytd_benchmark = benchmark_ret[benchmark_ret.index >= ytd_start]
+    
+    if not ytd_portfolio.empty:
+        # Cumulative Return
+        ytd_return = (1 + ytd_portfolio).prod() - 1
+        benchmark_ytd = (1 + ytd_benchmark).prod() - 1
+        
+        # YTD Beta
+        if np.var(ytd_benchmark) > 0:
+            ytd_beta = np.cov(ytd_portfolio, ytd_benchmark)[0][1] / np.var(ytd_benchmark)
+        else:
+            ytd_beta = 0
+            
+        # Risk Efficiency (Return / Vol)
+        # Annualized Vol for YTD
+        ytd_vol = np.std(ytd_portfolio) * np.sqrt(ANNUAL_FACTOR)
+        risk_efficiency = ytd_return / ytd_vol if ytd_vol > 0 else 0
+        
+        # Benchmark Sharpe (approx)
+        bench_vol = np.std(ytd_benchmark) * np.sqrt(ANNUAL_FACTOR)
+        bench_sharpe = (benchmark_ytd * (252/len(ytd_benchmark)) - 0.04) / bench_vol if bench_vol > 0 else 0
+        
+    else:
+        ytd_return = 0.0
+        benchmark_ytd = 0.0
+        ytd_beta = 0.0
+        risk_efficiency = 0.0
+        bench_sharpe = 0.0
+
     return {
         'Beta': portfolio_beta,
         'Annual_Return': annual_ret,
@@ -256,6 +293,11 @@ def calculate_risk_metrics(price_df):
         'VaR_95': var_95,
         'CVaR_95': cvar_95,
         'Max_Drawdown': max_drawdown,
+        'YTD_Return': ytd_return,
+        'Benchmark_YTD': benchmark_ytd,
+        'YTD_Beta': ytd_beta,
+        'Risk_Efficiency': risk_efficiency,
+        'Benchmark_Sharpe': bench_sharpe,
         'Returns_Stream': portfolio_daily_ret,
         'Net_Stream': portfolio_net_ret, # Post-fee
         'Benchmark_Stream': benchmark_ret, 

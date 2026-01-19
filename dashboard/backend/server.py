@@ -51,6 +51,7 @@ async def get_metrics():
         periodic_rets = risk.calculate_periodic_returns(usd_prices)
 
         # 3. Format Response
+        # 3. Format Response
         response = {
             "vitals": {
                 "beta": metrics['Beta'],
@@ -61,6 +62,13 @@ async def get_metrics():
                 "maxDrawdown": metrics['Max_Drawdown'],
                 "var95": metrics['VaR_95'],
                 "cvar95": metrics['CVaR_95'],
+                
+                # New YTD Fields
+                "ytdReturn": metrics.get('YTD_Return'),
+                "benchmarkYtd": metrics.get('Benchmark_YTD'),
+                "ytdBeta": metrics.get('YTD_Beta'),
+                "riskEfficiencyVol": metrics.get('Risk_Efficiency'),
+                "benchmarkSharpe": metrics.get('Benchmark_Sharpe'),
             },
             "leverage": metrics['Leverage_Stats'],
             "riskAttribution": [],
