@@ -27,6 +27,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/api/status")
+async def get_status():
+    if risk:
+        return {"state": "ready", "message": "Ready"}
+    else:
+        return {"state": "error", "message": "Risk module failed to load"}
+
 @app.get("/api/metrics")
 async def get_metrics():
     if not risk:
