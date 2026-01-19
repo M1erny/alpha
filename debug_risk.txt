@@ -4,8 +4,8 @@ DEBUG: Sample Index: DatetimeIndex(['2020-01-21', '2020-01-22', '2020-01-23', '2
                '2020-01-27'],
               dtype='datetime64[ns]', name='Date', freq=None)
 DEBUG: YTD Rows Found: 12
-DEBUG: YTD Return (Cum): 8.1582%
-DEBUG: YTD Ann Return: 170.3176%
-DEBUG: YTD Vol: 32.0191%
+DEBUG: YTD Return (Cum): 8.0773%
+DEBUG: YTD Ann Return: 168.7588%
+DEBUG: YTD Vol: 32.0926%
 DEBUG: Bench YTD: 1.4283%
 DEBUG: YTD Portfolio Sample: [0.006732470562373018, 0.037948006182491584, 0.04269474202828978, 0.0062424618412229745, -0.023003523535422808]

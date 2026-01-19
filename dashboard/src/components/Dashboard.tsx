@@ -300,20 +300,20 @@ export const Dashboard: React.FC = () => {
                                             const retData = periodicReturns.find(p => p.ticker === item.ticker);
                                             let val = 0;
                                             if (retData) {
-                                                if (heatmapPeriod === 'ytd') val = retData.ytd;
-                                                if (heatmapPeriod === 'r1y') val = retData.r1y || 0;
-                                                if (heatmapPeriod === 'r3y') val = retData.r3y || 0;
+                                                if (heatmapPeriod === 'ytd') val = retData.ytd ?? 0;
+                                                if (heatmapPeriod === 'r1y') val = retData.r1y ?? 0;
+                                                if (heatmapPeriod === 'r3y') val = retData.r3y ?? 0;
                                             }
                                             return {
                                                 name: item.ticker,
-                                                size: Math.abs(item.weight),
+                                                size: Math.abs(item.weight) * 100, // Scale up for visibility
                                                 value: val
                                             };
-                                        }).filter(x => x.size > 0.005)
+                                        }).filter(x => x.size > 0.5) // Min 0.5% allocation
                                     }]}
                                     dataKey="size"
                                     aspectRatio={4 / 3}
-                                    stroke="#0f172a" // Gap color matches bg
+                                    stroke="#0f172a"
                                     content={(props: any) => {
                                         const { x, y, width, height, payload, name, value, depth } = props;
                                         // Ignore Root Node
