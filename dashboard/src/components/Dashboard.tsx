@@ -17,7 +17,6 @@ export const Dashboard: React.FC = () => {
     const [data, setData] = useState<FullRiskReport | null>(null);
     const [loading, setLoading] = useState(true);
     const [statusMsg, setStatusMsg] = useState("Initializing...");
-    const [retryCount, setRetryCount] = useState(0);
     const [heatmapPeriod, setHeatmapPeriod] = useState<'ytd' | 'r1y' | 'r3y'>('ytd');
 
     useEffect(() => {
@@ -379,7 +378,7 @@ export const Dashboard: React.FC = () => {
                                 >
                                     <Tooltip
                                         contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155' }}
-                                        formatter={(val: any, name: any, item: any) => {
+                                        formatter={(_val: any, _name: any, item: any) => {
                                             // Shows return
                                             return [`${(item.payload.value * 100).toFixed(2)}%`, 'Return'];
                                         }}
