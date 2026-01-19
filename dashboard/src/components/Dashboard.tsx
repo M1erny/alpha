@@ -155,12 +155,12 @@ export const Dashboard: React.FC = () => {
                         </div>
                     </div>
                     <div className="flex flex-col border-r border-white/10 pr-4 last:border-0 pl-4">
-                        <span className="text-xs text-muted-foreground uppercase tracking-wider">YTD Efficiency (Ret/Vol)</span>
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider">YTD Sharpe Ratio</span>
                         <div className="flex items-baseline gap-2 mt-1">
-                            <span className={cn("text-2xl font-bold", vitals.riskEfficiencyVol > 1 ? "text-emerald-400" : "text-white")}>
-                                {formatNumber(vitals.riskEfficiencyVol)}
+                            <span className={cn("text-2xl font-bold", vitals.ytdSharpe > 1 ? "text-emerald-400" : "text-white")}>
+                                {formatNumber(vitals.ytdSharpe)}
                             </span>
-                            <span className="text-xs text-muted-foreground">vs {formatNumber(vitals.benchmarkSharpe)} (SPY)</span>
+                            <span className="text-xs text-muted-foreground">vs {formatNumber(vitals.benchmarkYtdSharpe)} (SPY)</span>
                         </div>
                     </div>
                     <div className="flex flex-col pl-4">
@@ -169,7 +169,7 @@ export const Dashboard: React.FC = () => {
                             <span className="text-2xl font-bold text-amber-500">
                                 {formatNumber(vitals.sharpe)}
                             </span>
-                            <span className="text-xs text-muted-foreground">vs {formatNumber(vitals.benchmarkSharpe)} (SPY)</span>
+                            <span className="text-xs text-muted-foreground">vs {formatNumber(vitals.benchmarkHistSharpe)} (SPY)</span>
                         </div>
                     </div>
                 </div>
@@ -181,7 +181,7 @@ export const Dashboard: React.FC = () => {
                     <MetricCard title="Beta" value={formatNumber(vitals.beta)} icon={<Scale className="h-4 w-4 text-violet-500" />} />
                     <MetricCard title="Sharpe Ratio" value={formatNumber(vitals.sharpe)} icon={<Zap className="h-4 w-4 text-amber-500" />} />
                     <MetricCard title="Max Drawdown" value={formatPercent(vitals.maxDrawdown)} icon={<ShieldCheck className="h-4 w-4 text-rose-500" />} subValue="Peak to Trough" trend="down" />
-                    <MetricCard title="VaR (95%)" value={formatPercent(vitals.var95)} icon={<AlertTriangle className="h-4 w-4 text-orange-500" />} description="Daily Value at Risk" />
+                    <MetricCard title="Rolling 1M Vol" value={formatPercent(vitals.rolling1mVol)} icon={<AlertTriangle className="h-4 w-4 text-orange-500" />} description="Recent Volatility" />
                 </div>
 
                 {/* ROW 2: MAIN CHARTS (Performance + Underwater + Monte Carlo) */}

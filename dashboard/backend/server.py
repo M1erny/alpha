@@ -70,7 +70,7 @@ async def get_metrics():
                 "sharpe": to_float(metrics['Sharpe']),
                 "sortino": to_float(metrics['Sortino']),
                 "maxDrawdown": to_float(metrics['Max_Drawdown']),
-                "var95": to_float(metrics['VaR_95']),
+                "rolling1mVol": to_float(metrics.get('Rolling_1M_Vol')),
                 "cvar95": to_float(metrics['CVaR_95']),
                 "jensensAlpha": to_float(metrics.get('Jensens_Alpha')),
                 "periodInfo": metrics.get('Period_Info'),
@@ -79,8 +79,11 @@ async def get_metrics():
                 "ytdReturn": to_float(metrics.get('YTD_Return')),
                 "benchmarkYtd": to_float(metrics.get('Benchmark_YTD')),
                 "ytdBeta": to_float(metrics.get('YTD_Beta')),
-                "riskEfficiencyVol": to_float(metrics.get('Risk_Efficiency')),
-                "benchmarkSharpe": to_float(metrics.get('Benchmark_Sharpe')),
+                
+                # Standardized Sharpe Metrics
+                "ytdSharpe": to_float(metrics.get('YTD_Sharpe')),           # Previously riskEfficiencyVol
+                "benchmarkYtdSharpe": to_float(metrics.get('Benchmark_YTD_Sharpe')), 
+                "benchmarkHistSharpe": to_float(metrics.get('Benchmark_Hist_Sharpe')), # For Hist Avg comparison
             },
             "leverage": metrics['Leverage_Stats'],
             "riskAttribution": [],
@@ -112,6 +115,7 @@ async def get_metrics():
         for ticker, row in periodic_rets.iterrows():
             response["periodicReturns"].append({
                 "ticker": ticker,
+                "ytd": row['YTD'] if 'YTD' in row and not pd.isna(row['YTD']) else None,
                 "r1y": row['1Y'] if not pd.isna(row['1Y']) else None,
                 "r3y": row['3Y'] if not pd.isna(row['3Y']) else None,
                 "r5y": row['5Y'] if not pd.isna(row['5Y']) else None,

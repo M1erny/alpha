@@ -139,6 +139,22 @@ def calculate_risk_metrics(price_df):
 
     benchmark_ret = returns_df[BENCHMARK]
     
+    # --- 0.5. DYNAMIC RISK FREE RATE (^TNX) ---
+    try:
+        tnx = yf.Ticker("^TNX")
+        tnx_hist = tnx.history(period="5d", progress=False)
+        if not tnx_hist.empty:
+            # TNX is yield (e.g., 4.25), convert to decimal (0.0425)
+            latest_yield = tnx_hist['Close'].iloc[-1]
+            rf_rate = latest_yield / 100.0
+            print(f"DEBUG: Using Dynamic Risk-Free Rate (^TNX): {rf_rate:.4%}")
+        else:
+            rf_rate = 0.04
+            print("Warning: ^TNX data unavailable. Defaulting Rf to 4%.")
+    except Exception as e:
+        print(f"Error fetching ^TNX: {e}. Defaulting Rf to 4%.")
+        rf_rate = 0.04
+    
     # --- 1. PREPARE PORTFOLIO RETURNS ---
     # Construct a weighted portfolio return series
     portfolio_daily_ret = pd.Series(0.0, index=returns_df.index)
@@ -194,8 +210,7 @@ def calculate_risk_metrics(price_df):
     avg_daily_ret = np.mean(portfolio_daily_ret)
     annual_ret = avg_daily_ret * ANNUAL_FACTOR
     
-    # Sharpe Ratio (assuming Risk Free Rate = 4%)
-    rf_rate = 0.04
+    # Sharpe Ratio (Dynamic Rf)
     sharpe_ratio = (annual_ret - rf_rate) / annual_vol if annual_vol > 0 else 0
     
     # Sortino Ratio (Downside Risk only)
@@ -204,10 +219,15 @@ def calculate_risk_metrics(price_df):
     sortino_ratio = (annual_ret - rf_rate) / downside_std if downside_std > 0 else 0
     
     # --- 3. TAIL RISK ---
-    # VaR 95% (Historical)
-    var_95 = np.percentile(portfolio_daily_ret, 5)
+    # Rolling 1-Month Standard Deviation (Annualized)
+    rolling_window = 21  # ~1 month of trading days
+    if len(portfolio_daily_ret) >= rolling_window:
+        rolling_1m_vol = portfolio_daily_ret.iloc[-rolling_window:].std() * np.sqrt(ANNUAL_FACTOR)
+    else:
+        rolling_1m_vol = annual_vol  # Fallback: use overall vol if not enough data
     
-    # CVaR 95% (Expected Shortfall) - Average of losses exceeding VaR
+    # CVaR 95% (Expected Shortfall) - Average of losses exceeding 5th percentile
+    var_95 = np.percentile(portfolio_daily_ret, 5)
     cvar_95 = portfolio_daily_ret[portfolio_daily_ret <= var_95].mean()
     
     # Max Drawdown
@@ -297,25 +317,34 @@ def calculate_risk_metrics(price_df):
         else:
             ytd_beta = 0
             
-        # Risk Efficiency (Return / Vol)
+        # Risk Efficiency -> YTD Sharpe
         # Annualized Vol for YTD
         ytd_vol = np.std(ytd_portfolio) * np.sqrt(ANNUAL_FACTOR)
-        risk_efficiency = ytd_return / ytd_vol if ytd_vol > 0 else 0
+        ytd_ann_ret = np.mean(ytd_portfolio) * ANNUAL_FACTOR
+        ytd_sharpe = (ytd_ann_ret - rf_rate) / ytd_vol if ytd_vol > 0 else 0
         
-        # Benchmark Sharpe (approx)
-        bench_vol = np.std(ytd_benchmark) * np.sqrt(ANNUAL_FACTOR)
-        bench_sharpe = (benchmark_ytd * (252/len(ytd_benchmark)) - 0.04) / bench_vol if bench_vol > 0 else 0
+        # Benchmark YTD Sharpe
+        bench_ytd_vol = np.std(ytd_benchmark) * np.sqrt(ANNUAL_FACTOR)
+        bench_ytd_ann_ret = np.mean(ytd_benchmark) * ANNUAL_FACTOR
+        bench_ytd_sharpe = (bench_ytd_ann_ret - rf_rate) / bench_ytd_vol if bench_ytd_vol > 0 else 0
+        
+        # Benchmark Historical Sharpe
+        bench_ann_vol = np.std(benchmark_ret) * np.sqrt(ANNUAL_FACTOR)
+        bench_hist_sharpe = (annual_bench_ret - rf_rate) / bench_ann_vol if bench_ann_vol > 0 else 0
         
     else:
         ytd_return = 0.0
         benchmark_ytd = 0.0
         ytd_beta = 0.0
-        risk_efficiency = 0.0
-        bench_sharpe = 0.0
+        ytd_sharpe = 0.0
+        bench_ytd_sharpe = 0.0
+        bench_hist_sharpe = 0.0
 
     with open("debug_risk.txt", "a") as f:
-        f.write(f"DEBUG: YTD Return: {ytd_return}\n")
-        f.write(f"DEBUG: Bench YTD: {benchmark_ytd}\n")
+        f.write(f"DEBUG: YTD Return (Cum): {ytd_return:.4%}\n")
+        f.write(f"DEBUG: YTD Ann Return: {ytd_ann_ret if 'ytd_ann_ret' in locals() else 0:.4%}\n")
+        f.write(f"DEBUG: YTD Vol: {ytd_vol if 'ytd_vol' in locals() else 0:.4%}\n")
+        f.write(f"DEBUG: Bench YTD: {benchmark_ytd:.4%}\n")
         f.write(f"DEBUG: YTD Portfolio Sample: {ytd_portfolio.tolist()[:5]}\n")
 
     return {
@@ -324,7 +353,7 @@ def calculate_risk_metrics(price_df):
         'Annual_Vol': annual_vol,
         'Sharpe': sharpe_ratio,
         'Sortino': sortino_ratio,
-        'VaR_95': var_95,
+        'Rolling_1M_Vol': rolling_1m_vol,
         'CVaR_95': cvar_95,
         'Max_Drawdown': max_drawdown,
         'Jensens_Alpha': jensens_alpha,
@@ -336,8 +365,9 @@ def calculate_risk_metrics(price_df):
         'YTD_Return': ytd_return,
         'Benchmark_YTD': benchmark_ytd,
         'YTD_Beta': ytd_beta,
-        'Risk_Efficiency': risk_efficiency,
-        'Benchmark_Sharpe': bench_sharpe,
+        'YTD_Sharpe': ytd_sharpe,
+        'Benchmark_YTD_Sharpe': bench_ytd_sharpe,
+        'Benchmark_Hist_Sharpe': bench_hist_sharpe,
         'Returns_Stream': portfolio_daily_ret,
         'Net_Stream': portfolio_net_ret, # Post-fee
         'Benchmark_Stream': benchmark_ret, 
@@ -405,12 +435,16 @@ def run_monte_carlo(metrics, num_sims=1000, days=60):
     return price_paths
 
 def calculate_periodic_returns(data):
-    print("--- 6. Calculating Periodic Returns (1Y, 3Y, 5Y) ---")
+    print("--- 6. Calculating Periodic Returns (YTD, 1Y, 3Y, 5Y) ---")
     periods = {
         '1Y': 252,
         '3Y': 252 * 3,
         '5Y': 252 * 5
     }
+    
+    # YTD calculation: from Jan 1st of current year
+    current_year = datetime.now().year
+    ytd_start = f"{current_year}-01-01"
     
     results = {}
     
@@ -418,9 +452,22 @@ def calculate_periodic_returns(data):
         series = data[ticker].dropna()
         if series.empty: continue
         
+        # Normalize index to remove timezone
+        if hasattr(series.index, 'tz') and series.index.tz is not None:
+            series.index = series.index.tz_localize(None)
+        
         current_price = series.iloc[-1]
         ticker_res = {}
         
+        # Calculate YTD return
+        ytd_series = series[series.index >= ytd_start]
+        if not ytd_series.empty and len(ytd_series) > 1:
+            ytd_start_price = ytd_series.iloc[0]
+            ticker_res['YTD'] = (current_price - ytd_start_price) / ytd_start_price
+        else:
+            ticker_res['YTD'] = np.nan
+        
+        # Calculate standard periods
         for p_name, days in periods.items():
             if len(series) > days:
                 past_price = series.iloc[-(days+1)]

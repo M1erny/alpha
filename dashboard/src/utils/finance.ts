@@ -11,15 +11,16 @@ export interface Vitals {
     sharpe: number;
     sortino: number;
     maxDrawdown: number;
-    var95: number;
+    rolling1mVol: number;
     cvar95: number;
     ytdReturn: number;
     benchmarkYtd: number;
     benchmarkVol: number;
-    benchmarkSharpe: number;
     ytdBeta: number;
-    riskEfficiencyVol: number;
-    riskEfficiencyBeta: number;
+    // Standardized Sharpe Metrics
+    ytdSharpe: number;
+    benchmarkYtdSharpe: number;
+    benchmarkHistSharpe: number;
     jensensAlpha: number;
     periodInfo: PeriodInfo;
 }
