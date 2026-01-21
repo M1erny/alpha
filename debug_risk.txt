@@ -1,11 +1,11 @@
 DEBUG: YTD Start: 2026-01-01
-DEBUG: Data Range: 2020-01-21 00:00:00 to 2026-01-19 00:00:00
-DEBUG: Sample Index: DatetimeIndex(['2020-01-21', '2020-01-22', '2020-01-23', '2020-01-24',
-               '2020-01-27'],
+DEBUG: Data Range: 2020-01-22 00:00:00 to 2026-01-20 00:00:00
+DEBUG: Sample Index: DatetimeIndex(['2020-01-22', '2020-01-23', '2020-01-24', '2020-01-27',
+               '2020-01-28'],
               dtype='datetime64[ns]', name='Date', freq=None)
-DEBUG: YTD Rows Found: 12
-DEBUG: YTD Return (Cum): 8.0846%
-DEBUG: YTD Ann Return: 168.9000%
-DEBUG: YTD Vol: 32.0858%
-DEBUG: Bench YTD: 1.4283%
+DEBUG: YTD Rows Found: 13
+DEBUG: YTD Return (Cum): 5.9421%
+DEBUG: YTD Ann Return: 117.4374%
+DEBUG: YTD Vol: 32.6716%
+DEBUG: Bench YTD: -0.6731%
 DEBUG: YTD Portfolio Sample: [0.006732470562373018, 0.037948006182491584, 0.04269474202828978, 0.0062424618412229745, -0.023003523535422808]
