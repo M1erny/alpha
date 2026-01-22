@@ -69,10 +69,15 @@ async def get_metrics():
         periodic_rets = risk.calculate_periodic_returns(usd_prices)
 
         # 3. Format Response
+        import math
         def to_float(val):
             if val is None: return None
             try:
-                return float(val)
+                f = float(val)
+                # Return None for NaN/Inf to avoid JSON serialization errors
+                if math.isnan(f) or math.isinf(f):
+                    return None
+                return f
             except:
                 return None
 
@@ -171,10 +176,25 @@ async def get_metrics():
             date_str = date.strftime('%Y-%m-%d')
             response["history"].append({
                 "date": date_str,
-                "portfolio": portfolio_cum.loc[date],
-                "benchmark": benchmark_cum.loc[date],
-                "drawdown": drawdown_stream.loc[date]
+                "portfolio": to_float(portfolio_cum.loc[date]),
+                "benchmark": to_float(benchmark_cum.loc[date]),
+                "drawdown": to_float(drawdown_stream.loc[date])
             })
+
+        # Sanitize Monte Carlo values too
+        for mc_point in response["monteCarlo"]:
+            for key in ["p05", "p50", "p95"]:
+                mc_point[key] = to_float(mc_point[key])
+        
+        # Sanitize stress tests
+        for st in response["stressTests"]:
+            st["impact"] = to_float(st["impact"])
+        
+        # Sanitize risk attribution
+        for ra in response["riskAttribution"]:
+            ra["weight"] = to_float(ra["weight"])
+            ra["pctRisk"] = to_float(ra["pctRisk"])
+            ra["mctr"] = to_float(ra["mctr"])
 
         return response
 

@@ -142,7 +142,13 @@ def calculate_risk_metrics(price_df):
         print("Error: Insufficient price data.")
         return None
         
-    returns_df = price_df.pct_change().dropna() # Use dropna to align valid returns
+    # Use dropna(how='all') to only drop rows where ALL values are NaN
+    # This prevents dropping rows where just some tickers are missing
+    returns_df = price_df.pct_change().dropna(how='all')
+    
+    if returns_df.empty or len(returns_df) < 2:
+        print("Error: Insufficient returns data after pct_change.")
+        return None
     
     if BENCHMARK not in returns_df.columns:
         print(f"Critical Error: Benchmark {BENCHMARK} data missing.")
@@ -153,7 +159,7 @@ def calculate_risk_metrics(price_df):
     # --- 0.5. DYNAMIC RISK FREE RATE (^TNX) ---
     try:
         tnx = yf.Ticker("^TNX")
-        tnx_hist = tnx.history(period="5d", progress=False)
+        tnx_hist = tnx.history(period="5d")
         if not tnx_hist.empty:
             # TNX is yield (e.g., 4.25), convert to decimal (0.0425)
             latest_yield = tnx_hist['Close'].iloc[-1]
@@ -238,8 +244,15 @@ def calculate_risk_metrics(price_df):
         rolling_1m_vol = annual_vol  # Fallback: use overall vol if not enough data
     
     # CVaR 95% (Expected Shortfall) - Average of losses exceeding 5th percentile
-    var_95 = np.percentile(portfolio_daily_ret, 5)
-    cvar_95 = portfolio_daily_ret[portfolio_daily_ret <= var_95].mean()
+    # Safeguard: check for empty or all-NaN data
+    valid_returns = portfolio_daily_ret.dropna()
+    if len(valid_returns) > 0:
+        var_95 = np.percentile(valid_returns, 5)
+        cvar_95 = valid_returns[valid_returns <= var_95].mean()
+    else:
+        var_95 = 0
+        cvar_95 = 0
+
     
     # Max Drawdown
     cum_ret = (1 + portfolio_daily_ret).cumprod()
@@ -396,8 +409,10 @@ def calculate_risk_metrics(price_df):
 
         # Derive Daily Returns for Vol/Beta/Sharpe consistency
         ytd_portfolio_daily_ret = portfolio_val_series.pct_change().dropna()
-        # Align benchmark to this series (might lose 1st day due to pct_change)
-        ytd_benchmark_aligned = ytd_benchmark.loc[ytd_portfolio_daily_ret.index]
+        # Align benchmark to this series using reindex (handles missing dates gracefully)
+        ytd_benchmark_aligned = ytd_benchmark.reindex(ytd_portfolio_daily_ret.index).dropna()
+        # Also filter portfolio to matched dates
+        ytd_portfolio_daily_ret = ytd_portfolio_daily_ret.loc[ytd_benchmark_aligned.index]
 
         # YTD Beta
         if not ytd_benchmark_aligned.empty and np.var(ytd_benchmark_aligned) > 0:

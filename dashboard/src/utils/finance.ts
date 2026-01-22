@@ -81,6 +81,7 @@ export interface FullRiskReport {
     periodicReturns: PeriodicReturn[];
     monteCarlo: MonteCarloPoint[];
     history: HistoryPoint[];
+    error?: string; // Optional error message from backend
 }
 
 export const fetchDashboardData = async (): Promise<FullRiskReport | null> => {

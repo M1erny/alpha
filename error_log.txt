@@ -1,0 +1,305 @@
+﻿python : 
+At line:1 char:1
++ python -c "import 
+risk; stock_data, 
+fx_data = 
+risk.fetch_data(); 
+usd_ ...
++ ~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~
+    + CategoryInfo   
+           : NotSpe  
+  cified: (:String   
+ ) [], RemoteExce    
+ption
+    + FullyQualified 
+   ErrorId : Native  
+  CommandError
+ 
+[                    
+   0%                
+       ]
+[***                 
+   7%                
+       ]  2 of 28 
+completed
+[*****               
+  11%                
+       ]  3 of 28 
+completed
+[*******             
+  14%                
+       ]  4 of 28 
+completed
+[*******             
+  14%                
+       ]  4 of 28 
+completed
+[**********          
+  21%                
+       ]  6 of 28 
+completed
+[************        
+  25%                
+       ]  7 of 28 
+completed
+[**************      
+  29%                
+       ]  8 of 28 
+completed
+[***************     
+  32%                
+       ]  9 of 28 
+completed
+[*****************   
+  36%                
+       ]  10 of 28 
+completed
+[******************* 
+  39%                
+       ]  11 of 28 
+completed
+[********************
+* 43%                
+       ]  12 of 28 
+completed
+[********************
+**46%                
+       ]  13 of 28 
+completed
+[********************
+**50%                
+       ]  14 of 28 
+completed
+[********************
+**54%*               
+       ]  15 of 28 
+completed
+[********************
+**57%**              
+       ]  16 of 28 
+completed
+[********************
+**61%****            
+       ]  17 of 28 
+completed
+[********************
+**64%******          
+       ]  18 of 28 
+completed
+[********************
+**68%********        
+       ]  19 of 28 
+completed
+[********************
+**71%*********       
+       ]  20 of 28 
+completed
+[********************
+**75%***********     
+       ]  21 of 28 
+completed
+[********************
+**79%*************   
+       ]  22 of 28 
+completed
+[********************
+**82%**************  
+       ]  23 of 28 
+completed
+[********************
+**86%****************
+       ]  24 of 28 
+completed
+[********************
+**89%****************
+**     ]  25 of 28 
+completed
+[********************
+**93%****************
+****   ]  26 of 28 
+completed
+[********************
+**96%****************
+*****  ]  27 of 28 
+completed
+[********************
+*100%****************
+*******]  28 of 28 
+completed
+
+[                    
+   0%                
+       ]
+[******************* 
+  40%                
+       ]  2 of 5 
+completed
+[********************
+**60%****            
+       ]  3 of 5 
+completed
+[********************
+**80%*************   
+       ]  4 of 5 
+completed
+[********************
+*100%****************
+*******]  5 of 5 
+completed
+C:\Users\Tomek\.antig
+ravity\alpha\risk.py:
+145: FutureWarning: 
+The default 
+fill_method='pad' in 
+DataFrame.pct_change 
+is deprecated and 
+will be removed in a 
+future version. 
+Either fill in any 
+non-leading NA 
+values prior to 
+calling pct_change 
+or specify 
+'fill_method=None' 
+to not fill NA 
+values.
+  returns_df = price_
+df.pct_change().dropn
+a() # Use dropna to 
+align valid returns
+C:\Users\Tomek\AppDat
+a\Local\Programs\Pyth
+on\Python312\Lib\site
+-packages\numpy\lib\f
+unction_base.py:520: 
+RuntimeWarning: Mean 
+of empty slice.
+  avg = a.mean(axis, 
+**keepdims_kw)
+C:\Users\Tomek\AppDat
+a\Local\Programs\Pyth
+on\Python312\Lib\site
+-packages\numpy\core\
+_methods.py:121: 
+RuntimeWarning: 
+invalid value 
+encountered in divide
+  ret = 
+um.true_divide(
+C:\Users\Tomek\.antig
+ravity\alpha\risk.py:
+212: RuntimeWarning: 
+Degrees of freedom 
+<= 0 for slice
+  covariance = np.cov
+(portfolio_daily_ret,
+ benchmark_ret)[0][1]
+C:\Users\Tomek\AppDat
+a\Local\Programs\Pyth
+on\Python312\Lib\site
+-packages\numpy\lib\f
+unction_base.py:2748:
+ RuntimeWarning: 
+divide by zero 
+encountered in divide
+  c *= 
+np.true_divide(1, 
+fact)
+C:\Users\Tomek\AppDat
+a\Local\Programs\Pyth
+on\Python312\Lib\site
+-packages\numpy\lib\f
+unction_base.py:2748:
+ RuntimeWarning: 
+invalid value 
+encountered in 
+multiply
+  c *= 
+np.true_divide(1, 
+fact)
+Traceback (most 
+recent call last):
+  File "<string>", 
+line 1, in <module>
+  File "C:\Users\Tome
+k\.antigravity\alpha\
+risk.py", line 241, 
+in calculate_risk_met
+rics
+    var_95 = np.perce
+ntile(portfolio_daily
+_ret, 5)
+             ^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^
+  File "C:\Users\Tome
+k\AppData\Local\Progr
+ams\Python\Python312\
+Lib\site-packages\num
+py\lib\function_base.
+py", line 4283, in 
+percentile
+    return 
+_quantile_unchecked(
+           
+^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tome
+k\AppData\Local\Progr
+ams\Python\Python312\
+Lib\site-packages\num
+py\lib\function_base.
+py", line 4555, in 
+_quantile_unchecked
+    return 
+_ureduce(a,
+           
+^^^^^^^^^^^
+  File "C:\Users\Tome
+k\AppData\Local\Progr
+ams\Python\Python312\
+Lib\site-packages\num
+py\lib\function_base.
+py", line 3823, in 
+_ureduce
+    r = func(a, 
+**kwargs)
+        
+^^^^^^^^^^^^^^^^^
+  File "C:\Users\Tome
+k\AppData\Local\Progr
+ams\Python\Python312\
+Lib\site-packages\num
+py\lib\function_base.
+py", line 4722, in _q
+uantile_ureduce_func
+    result = 
+_quantile(arr,
+             
+^^^^^^^^^^^^^^
+  File "C:\Users\Tome
+k\AppData\Local\Progr
+ams\Python\Python312\
+Lib\site-packages\num
+py\lib\function_base.
+py", line 4831, in 
+_quantile
+    
+slices_having_nans = 
+np.isnan(arr[-1, 
+...])
+                     
+             
+~~~^^^^^^^^^
+IndexError: index -1 
+is out of bounds for 
+axis 0 with size 0
+--- 1. Initializing Data Download ---
+Fetching stock data for 28 tickers from 2020-01-24...
+Stock Raw Shape: (1561, 140)
+Fetching FX rates for: ['DKKUSD=X', 'KRWUSD=X', 'JPYUSD=X', 'PLNUSD=X', 'EURUSD=X']...
+--- 2. Normalizing Currencies to USD ---
+--- 3. Calculating Advanced Risk Metrics ---
+Error fetching ^TNX: PriceHistory.history() got an unexpected keyword argument 'progress'. Defaulting Rf to 4%.
