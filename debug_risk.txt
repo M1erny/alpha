@@ -1,11 +1,5 @@
 DEBUG: YTD Start: 2026-01-01
-DEBUG: Data Range: 2020-01-22 00:00:00 to 2026-01-20 00:00:00
-DEBUG: Sample Index: DatetimeIndex(['2020-01-22', '2020-01-23', '2020-01-24', '2020-01-27',
-               '2020-01-28'],
-              dtype='datetime64[ns]', name='Date', freq=None)
-DEBUG: YTD Rows Found: 13
-DEBUG: YTD Return (Cum): 5.9421%
-DEBUG: YTD Ann Return: 117.4374%
-DEBUG: YTD Vol: 32.6716%
-DEBUG: Bench YTD: -0.6731%
-DEBUG: YTD Portfolio Sample: [0.006732470562373018, 0.037948006182491584, 0.04269474202828978, 0.0062424618412229745, -0.023003523535422808]
+DEBUG: YTD Price Rows Found: 15
+DEBUG: Ticker AFRM Weight: 0.2 Direction: 1
+DEBUG: AFRM Start Price: 74.02999877929688 End Price: nan
+DEBUG: AFRM Cum Ret: nan

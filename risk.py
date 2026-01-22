@@ -41,6 +41,8 @@ PORTFOLIO_CONFIG = {
 }
 
 BENCHMARK = 'SPY'
+BENCHMARK_WIG = 'WIG.WA'    # Polish WIG Index
+BENCHMARK_MSCI = 'URTH'     # iShares MSCI World ETF
 BASE_CURRENCY = 'USD'
 LOOKBACK_YEARS = 6
 
@@ -60,6 +62,8 @@ def fetch_data():
     
     tickers = list(PORTFOLIO_CONFIG.keys())
     tickers.append(BENCHMARK)
+    tickers.append(BENCHMARK_WIG)   # Polish WIG
+    tickers.append(BENCHMARK_MSCI)  # MSCI World
     
     # Identify unique currencies
     currencies = list(set([item['currency'] for item in PORTFOLIO_CONFIG.values()]))
@@ -70,8 +74,11 @@ def fetch_data():
     
     start_date = (datetime.now() - timedelta(days=LOOKBACK_YEARS*365)).strftime('%Y-%m-%d')
     
-    print(f"Fetching stock data for {len(tickers)} tickers...")
+    print(f"Fetching stock data for {len(tickers)} tickers from {start_date}...")
     stock_raw = yf.download(tickers, start=start_date, auto_adjust=True)
+    print(f"Stock Raw Shape: {stock_raw.shape}")
+    if stock_raw.empty:
+         print("WARNING: Stock Raw is EMPTY!")
     
     # Handle Data Structure (MultiIndex vs Single)
     if isinstance(stock_raw.columns, pd.MultiIndex):
@@ -131,7 +138,11 @@ def normalize_to_base_currency(stock_df, fx_df):
 def calculate_risk_metrics(price_df):
     print("--- 3. Calculating Advanced Risk Metrics ---")
     
-    returns_df = price_df.pct_change().fillna(0) # Use 0 for missing history
+    if price_df.empty or len(price_df) < 2:
+        print("Error: Insufficient price data.")
+        return None
+        
+    returns_df = price_df.pct_change().dropna() # Use dropna to align valid returns
     
     if BENCHMARK not in returns_df.columns:
         print(f"Critical Error: Benchmark {BENCHMARK} data missing.")
@@ -269,6 +280,14 @@ def calculate_risk_metrics(price_df):
 
             total_risk_sum += mctr
             
+    # --- 4.4 Rolling Volatility ---
+    # Rolling 1-Month Volatility (Annualized)
+    rolling_vol_series = portfolio_daily_ret.rolling(window=21).std()
+    rolling_1m_vol = rolling_vol_series.iloc[-1] * np.sqrt(ANNUAL_FACTOR) if not rolling_vol_series.empty else 0
+    
+    bench_rolling_vol_series = benchmark_ret.rolling(window=21).std()
+    bench_rolling_1m_vol = bench_rolling_vol_series.iloc[-1] * np.sqrt(ANNUAL_FACTOR) if not bench_rolling_vol_series.empty else 0
+
     # --- 4.5 CAPM Metrics (Jensen's Alpha) ---
     # Alpha = Rp - (Rf + Beta * (Rm - Rf))
     # We need annualized benchmark return for this
@@ -288,39 +307,108 @@ def calculate_risk_metrics(price_df):
     ytd_start = f"{current_year}-01-01"
     
     # Filter for YTD data
+    # Filter for YTD data
     with open("debug_risk.txt", "w") as f:
         f.write(f"DEBUG: YTD Start: {ytd_start}\n")
-        f.write(f"DEBUG: Data Range: {portfolio_daily_ret.index[0]} to {portfolio_daily_ret.index[-1]}\n")
-        f.write(f"DEBUG: Sample Index: {portfolio_daily_ret.index[:5]}\n")
     
-    # Ensure timezone handling works (strip tz if present for simple comparison)
-    if hasattr(portfolio_daily_ret.index, 'tz'):
-        portfolio_daily_ret.index = portfolio_daily_ret.index.tz_localize(None)
+    # 1. Get Price Data for YTD (from price_df which is an input)
+    # Ensure timezone handling works (strip tz if present)
+    if hasattr(price_df.index, 'tz'):
+        price_df.index = price_df.index.tz_localize(None)
+        
+    ytd_prices = price_df[price_df.index >= ytd_start]
+
     if hasattr(benchmark_ret.index, 'tz'):
         benchmark_ret.index = benchmark_ret.index.tz_localize(None)
-
-    ytd_portfolio = portfolio_daily_ret[portfolio_daily_ret.index >= ytd_start]
-    
-    with open("debug_risk.txt", "a") as f:
-        f.write(f"DEBUG: YTD Rows Found: {len(ytd_portfolio)}\n")
-    
     ytd_benchmark = benchmark_ret[benchmark_ret.index >= ytd_start]
     
-    if not ytd_portfolio.empty:
-        # Cumulative Return
-        ytd_return = (1 + ytd_portfolio).prod() - 1
-        benchmark_ytd = (1 + ytd_benchmark).prod() - 1
+    with open("debug_risk.txt", "a") as f:
+        f.write(f"DEBUG: YTD Price Rows Found: {len(ytd_prices)}\n")
+
+    if not ytd_prices.empty and len(ytd_prices) > 1:
+        # --- BUY & HOLD SIMULATION ---
+        # Normalize prices to start at 1.0
+        ytd_rel_prices = ytd_prices / ytd_prices.iloc[0]
         
+        # Calculate Value Series: Sum(Weight * Normalized_Price)
+        # Note: Short positions are: -1 * Weight * (Price_Ratio - 1) for PL... 
+        # Actually easier: Value_Contribution = Weight * Price_Ratio * Direction?
+        # Let's stick to the Portfolio Value conceptual model:
+        # V_t = Cash + Sum(Active_Positions_t)
+        # But we assume fully invested or cash is static.
+        # Simplest B&H proxy: Sum(Signed_Weight * Relative_Price_Change) + 1?
+        # No.
+        # Correct B&H Value Evolution (starting at V=1):
+        # V_t = Sum( |w_i| * (1 + direction_i * (P_t/P_0 - 1)) ) + (1 - Sum(|w_i|)) * 1.0 (Cash)
+        # Assumes weights sum to <= 100% equity. 
+        # If levered (Sum(|w|) > 1), then Cash is negative (margin loan).
+        
+        # Let's construct the components.
+        portfolio_val_series = pd.Series(0.0, index=ytd_rel_prices.index)
+        
+        # Cash Component (Uninvested Equity)
+        total_gross_weight = 0
+        
+        ytd_longs_contrib = 0
+        ytd_shorts_contrib = 0
+        
+        for ticker in active_tickers:
+            info = PORTFOLIO_CONFIG[ticker]
+            weight = info['weight'] # Absolute weight
+            direction = 1 if info['type'] == 'Long' else -1
+            
+            total_gross_weight += weight 
+            
+            # Asset Return Series (Cumulative from start)
+            # Check if ticker exists
+            if ticker in ytd_rel_prices.columns:
+                asset_cum_ret = ytd_rel_prices[ticker] - 1
+                
+                # Position Contribution
+                position_contrib = weight * direction * asset_cum_ret
+                portfolio_val_series += position_contrib.fillna(0) # Handle NaN if any
+                
+                # Log first ticker detail
+                if ticker == active_tickers[0]:
+                     with open("debug_risk.txt", "a") as f:
+                        f.write(f"DEBUG: Ticker {ticker} Weight: {weight} Direction: {direction}\n")
+                        f.write(f"DEBUG: {ticker} Start Price: {ytd_prices[ticker].iloc[0]} End Price: {ytd_prices[ticker].iloc[-1]}\n")
+                        f.write(f"DEBUG: {ticker} Cum Ret: {asset_cum_ret.iloc[-1]:.4f}\n")
+
+            else:
+                 with open("debug_risk.txt", "a") as f:
+                    f.write(f"WARNING: Ticker {ticker} not in ytd_rel_prices columns!\n")
+            
+            # Final Contribution (for summary)
+            if ticker in ytd_rel_prices.columns:
+                final_contrib = position_contrib.iloc[-1]
+                if direction == 1:
+                    ytd_longs_contrib += final_contrib
+                else:
+                    ytd_shorts_contrib += final_contrib
+
+        # Add initial base (1.0)
+        portfolio_val_series += 1.0
+        
+        # YTD Return (B&H)
+        ytd_return = portfolio_val_series.iloc[-1] - 1
+        benchmark_ytd = (1 + ytd_benchmark).prod() - 1
+
+        # Derive Daily Returns for Vol/Beta/Sharpe consistency
+        ytd_portfolio_daily_ret = portfolio_val_series.pct_change().dropna()
+        # Align benchmark to this series (might lose 1st day due to pct_change)
+        ytd_benchmark_aligned = ytd_benchmark.loc[ytd_portfolio_daily_ret.index]
+
         # YTD Beta
-        if np.var(ytd_benchmark) > 0:
-            ytd_beta = np.cov(ytd_portfolio, ytd_benchmark)[0][1] / np.var(ytd_benchmark)
+        if not ytd_benchmark_aligned.empty and np.var(ytd_benchmark_aligned) > 0:
+            ytd_beta = np.cov(ytd_portfolio_daily_ret, ytd_benchmark_aligned)[0][1] / np.var(ytd_benchmark_aligned)
         else:
             ytd_beta = 0
             
         # Risk Efficiency -> YTD Sharpe
-        # Annualized Vol for YTD
-        ytd_vol = np.std(ytd_portfolio) * np.sqrt(ANNUAL_FACTOR)
-        ytd_ann_ret = np.mean(ytd_portfolio) * ANNUAL_FACTOR
+        # Annualized Vol for YTD (using B&H daily returns)
+        ytd_vol = np.std(ytd_portfolio_daily_ret) * np.sqrt(ANNUAL_FACTOR)
+        ytd_ann_ret = np.mean(ytd_portfolio_daily_ret) * ANNUAL_FACTOR
         ytd_sharpe = (ytd_ann_ret - rf_rate) / ytd_vol if ytd_vol > 0 else 0
         
         # Benchmark YTD Sharpe
@@ -332,6 +420,82 @@ def calculate_risk_metrics(price_df):
         bench_ann_vol = np.std(benchmark_ret) * np.sqrt(ANNUAL_FACTOR)
         bench_hist_sharpe = (annual_bench_ret - rf_rate) / bench_ann_vol if bench_ann_vol > 0 else 0
         
+        # PLN Return (USD Return + FX Change)
+        try:
+            # Using a more robust fetch approach and logging errors
+            usdpln = yf.Ticker("USDPLN=X")
+            # Fetch slightly more history to ensure we get a valid start price
+            # REMOVED progress=False as it caused an error with some yfinance versions? 
+            # Actually standard yf.history has it, but yf.Ticker object's history might vary or be bugged.
+            # Safety: remove it.
+            pln_hist = usdpln.history(start=(pd.Timestamp(ytd_start) - pd.Timedelta(days=5)))
+            
+            if not pln_hist.empty:
+                # Find the closest available price to YTD start
+                if ytd_start in pln_hist.index:
+                    pln_start_val = pln_hist.loc[ytd_start]['Close']
+                else:
+                    # Fallback to the first available price in the fetched range (which includes 5 days prior)
+                    pln_start_val = pln_hist['Close'].iloc[0]
+                
+                pln_end_val = pln_hist['Close'].iloc[-1]
+                
+                fx_ytd_change = (pln_end_val - pln_start_val) / pln_start_val
+                ytd_return_pln = (1 + ytd_return) * (1 + fx_ytd_change) - 1
+                
+                with open("debug_risk.txt", "a") as f:
+                    f.write(f"DEBUG: PLN Start: {pln_start_val}, End: {pln_end_val}, FX Change: {fx_ytd_change:.4%}\n")
+            else:
+                with open("debug_risk.txt", "a") as f:
+                    f.write("DEBUG: PLN History Empty\n")
+                ytd_return_pln = ytd_return
+                fx_ytd_change = 0
+                
+        except Exception as e:
+            with open("debug_risk.txt", "a") as f:
+                f.write(f"DEBUG: PLN Fetch Error: {str(e)}\n")
+            ytd_return_pln = ytd_return
+            fx_ytd_change = 0
+        
+        # WIG YTD (in PLN, need to convert to USD for comparison)
+        if BENCHMARK_WIG in returns_df.columns:
+            wig_ret = returns_df[BENCHMARK_WIG]
+            if hasattr(wig_ret.index, 'tz') and wig_ret.index.tz is not None:
+                wig_ret.index = wig_ret.index.tz_localize(None)
+            ytd_wig = wig_ret[wig_ret.index >= ytd_start]
+            wig_ytd = (1 + ytd_wig).prod() - 1 if not ytd_wig.empty else 0
+        else:
+            wig_ytd = 0
+            
+        # MSCI World YTD
+        if BENCHMARK_MSCI in returns_df.columns:
+            msci_ret = returns_df[BENCHMARK_MSCI]
+            if hasattr(msci_ret.index, 'tz') and msci_ret.index.tz is not None:
+                msci_ret.index = msci_ret.index.tz_localize(None)
+            ytd_msci = msci_ret[msci_ret.index >= ytd_start]
+            msci_ytd = (1 + ytd_msci).prod() - 1 if not ytd_msci.empty else 0
+        else:
+            msci_ytd = 0
+            
+        # Longs/Shorts Contribution (HF Best Practice: use actual compounded contribution)
+        ytd_longs_contrib = 0.0
+        ytd_shorts_contrib = 0.0
+        for ticker, info in PORTFOLIO_CONFIG.items():
+            if ticker in returns_df.columns:
+                ticker_ret = returns_df[ticker]
+                if hasattr(ticker_ret.index, 'tz') and ticker_ret.index.tz is not None:
+                    ticker_ret.index = ticker_ret.index.tz_localize(None)
+                ytd_ticker = ticker_ret[ticker_ret.index >= ytd_start]
+                if not ytd_ticker.empty:
+                    ticker_ytd_ret = (1 + ytd_ticker).prod() - 1
+                    weight = info['weight']
+                    direction = 1 if info['type'] == 'Long' else -1
+                    contribution = ticker_ytd_ret * weight * direction
+                    if info['type'] == 'Long':
+                        ytd_longs_contrib += contribution
+                    else:
+                        ytd_shorts_contrib += contribution
+        
     else:
         ytd_return = 0.0
         benchmark_ytd = 0.0
@@ -339,13 +503,17 @@ def calculate_risk_metrics(price_df):
         ytd_sharpe = 0.0
         bench_ytd_sharpe = 0.0
         bench_hist_sharpe = 0.0
+        ytd_return_pln = 0.0
+        wig_ytd = 0.0
+        msci_ytd = 0.0
+        ytd_longs_contrib = 0.0
+        ytd_shorts_contrib = 0.0
 
     with open("debug_risk.txt", "a") as f:
         f.write(f"DEBUG: YTD Return (Cum): {ytd_return:.4%}\n")
         f.write(f"DEBUG: YTD Ann Return: {ytd_ann_ret if 'ytd_ann_ret' in locals() else 0:.4%}\n")
         f.write(f"DEBUG: YTD Vol: {ytd_vol if 'ytd_vol' in locals() else 0:.4%}\n")
         f.write(f"DEBUG: Bench YTD: {benchmark_ytd:.4%}\n")
-        f.write(f"DEBUG: YTD Portfolio Sample: {ytd_portfolio.tolist()[:5]}\n")
 
     return {
         'Beta': portfolio_beta,
@@ -354,6 +522,7 @@ def calculate_risk_metrics(price_df):
         'Sharpe': sharpe_ratio,
         'Sortino': sortino_ratio,
         'Rolling_1M_Vol': rolling_1m_vol,
+        'Benchmark_Rolling_1M_Vol': bench_rolling_1m_vol,
         'CVaR_95': cvar_95,
         'Max_Drawdown': max_drawdown,
         'Jensens_Alpha': jensens_alpha,
@@ -368,6 +537,11 @@ def calculate_risk_metrics(price_df):
         'YTD_Sharpe': ytd_sharpe,
         'Benchmark_YTD_Sharpe': bench_ytd_sharpe,
         'Benchmark_Hist_Sharpe': bench_hist_sharpe,
+        'YTD_Return_PLN': ytd_return_pln,
+        'WIG_YTD': wig_ytd,
+        'MSCI_YTD': msci_ytd,
+        'YTD_Longs_Contrib': ytd_longs_contrib,
+        'YTD_Shorts_Contrib': ytd_shorts_contrib,
         'Returns_Stream': portfolio_daily_ret,
         'Net_Stream': portfolio_net_ret, # Post-fee
         'Benchmark_Stream': benchmark_ret, 

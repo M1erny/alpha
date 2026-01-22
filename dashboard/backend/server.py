@@ -48,6 +48,21 @@ async def get_metrics():
         usd_prices = risk.normalize_to_base_currency(raw_prices, fx_rates)
         metrics = risk.calculate_risk_metrics(usd_prices)
         
+        if metrics is None:
+             print("Error: Metrics calculation returned None (insufficient data).")
+             # Return a valid structure with nulls/zeros to allow frontend to render empty state
+             # rather than crashing with 500
+             return {
+                "error": "Insufficient data to calculate metrics. (Likely Yahoo Finance rate limit or connection issue).",
+                "vitals": { k: 0 for k in ["beta", "annualReturn", "annualVol", "sharpe", "sortino", "maxDrawdown", "cvar95", "rolling1mVol"] }, # Partial fallback
+                "riskAttribution": [],
+                "stressTests": [],
+                "periodicReturns": [],
+                "monteCarlo": [],
+                "history": [],
+                "leverage": {}
+             }
+
         # 2. Run Advanced Models
         stress_results = risk.stress_test_portfolio(metrics)
         mc_paths = risk.run_monte_carlo(metrics, num_sims=500, days=60) # Reduced sims for speed
@@ -71,6 +86,7 @@ async def get_metrics():
                 "sortino": to_float(metrics['Sortino']),
                 "maxDrawdown": to_float(metrics['Max_Drawdown']),
                 "rolling1mVol": to_float(metrics.get('Rolling_1M_Vol')),
+                "rolling1mVolBenchmark": to_float(metrics.get('Benchmark_Rolling_1M_Vol')),
                 "cvar95": to_float(metrics['CVaR_95']),
                 "jensensAlpha": to_float(metrics.get('Jensens_Alpha')),
                 "periodInfo": metrics.get('Period_Info'),
@@ -84,6 +100,11 @@ async def get_metrics():
                 "ytdSharpe": to_float(metrics.get('YTD_Sharpe')),           # Previously riskEfficiencyVol
                 "benchmarkYtdSharpe": to_float(metrics.get('Benchmark_YTD_Sharpe')), 
                 "benchmarkHistSharpe": to_float(metrics.get('Benchmark_Hist_Sharpe')), # For Hist Avg comparison
+                "ytdReturnPln": to_float(metrics.get('YTD_Return_PLN')),
+                "wigYtd": to_float(metrics.get('WIG_YTD')),
+                "msciYtd": to_float(metrics.get('MSCI_YTD')),
+                "ytdLongsContrib": to_float(metrics.get('YTD_Longs_Contrib')),
+                "ytdShortsContrib": to_float(metrics.get('YTD_Shorts_Contrib')),
             },
             "leverage": metrics['Leverage_Stats'],
             "riskAttribution": [],

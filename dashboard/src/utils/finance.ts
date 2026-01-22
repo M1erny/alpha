@@ -12,6 +12,7 @@ export interface Vitals {
     sortino: number;
     maxDrawdown: number;
     rolling1mVol: number;
+    rolling1mVolBenchmark: number;
     cvar95: number;
     ytdReturn: number;
     benchmarkYtd: number;
@@ -21,6 +22,11 @@ export interface Vitals {
     ytdSharpe: number;
     benchmarkYtdSharpe: number;
     benchmarkHistSharpe: number;
+    ytdReturnPln: number;
+    wigYtd: number;
+    msciYtd: number;
+    ytdLongsContrib: number;
+    ytdShortsContrib: number;
     jensensAlpha: number;
     periodInfo: PeriodInfo;
 }

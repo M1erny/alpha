@@ -18,6 +18,7 @@ export const Dashboard: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [statusMsg, setStatusMsg] = useState("Initializing...");
     const [heatmapPeriod, setHeatmapPeriod] = useState<'ytd' | 'r1y' | 'r3y'>('ytd');
+    const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'weight', direction: 'desc' });
 
     useEffect(() => {
         let isActive = true;
@@ -83,6 +84,50 @@ export const Dashboard: React.FC = () => {
 
     const { vitals, leverage, riskAttribution, stressTests, history, periodicReturns } = data;
 
+    const requestSort = (key: string) => {
+        let direction: 'asc' | 'desc' = 'asc';
+        if (sortConfig.key === key && sortConfig.direction === 'asc') {
+            direction = 'desc';
+        }
+        setSortConfig({ key, direction });
+    };
+
+    const sortedRiskAttribution = React.useMemo(() => {
+        let sortableItems = [...riskAttribution];
+        if (sortConfig.key) {
+            sortableItems.sort((a, b) => {
+                let aValue: any = a[sortConfig.key as keyof typeof a];
+                let bValue: any = b[sortConfig.key as keyof typeof b];
+
+                // Handle return lookups
+                if (['ytd', 'r1y', 'r3y'].includes(sortConfig.key)) {
+                    aValue = periodicReturns.find(p => p.ticker === a.ticker)?.[sortConfig.key as 'ytd' | 'r1y' | 'r3y'] ?? -999;
+                    bValue = periodicReturns.find(p => p.ticker === b.ticker)?.[sortConfig.key as 'ytd' | 'r1y' | 'r3y'] ?? -999;
+                }
+
+                // Handle Risk which is usually sorted by magnitude
+                if (sortConfig.key === 'pctRisk') {
+                    aValue = Math.abs(a.pctRisk);
+                    bValue = Math.abs(b.pctRisk);
+                }
+
+                if (sortConfig.key === 'weight') {
+                    aValue = Math.abs(a.weight);
+                    bValue = Math.abs(b.weight);
+                }
+
+                if (aValue < bValue) {
+                    return sortConfig.direction === 'asc' ? -1 : 1;
+                }
+                if (aValue > bValue) {
+                    return sortConfig.direction === 'asc' ? 1 : -1;
+                }
+                return 0;
+            });
+        }
+        return sortableItems;
+    }, [riskAttribution, sortConfig, periodicReturns]);
+
     return (
         <div className="min-h-screen bg-background text-foreground p-6 md:p-8">
             {/* Fallback bg */}
@@ -118,70 +163,94 @@ export const Dashboard: React.FC = () => {
                     </div>
                 </div>
 
-                {/* PREMIUM STATS BAR (YTD & Benchmark Comparison) */}
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 bg-white/5 rounded-xl border border-white/10 p-4 backdrop-blur-md">
-                    <div className="flex flex-col border-r border-white/10 pr-4 last:border-0 hidden md:flex">
-                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Market Conditions</span>
-                        <div className="mt-1">
-                            <div className="flex justify-between text-xs mb-1">
-                                <span className="text-gray-400">YTD Beta</span>
-                                <span className="text-white font-mono">{formatNumber(vitals.ytdBeta)}</span>
-                            </div>
-                            <div className="flex justify-between text-xs">
-                                <span className="text-gray-400">Regime</span>
-                                <span className={cn("font-mono", vitals.ytdBeta > 1 ? "text-amber-400" : "text-blue-400")}>
-                                    {vitals.ytdBeta > 1 ? "Aggressive" : "Defensive"}
-                                </span>
-                            </div>
+                {/* Header Stats - Polished */}
+                <div className="mb-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 rounded-xl border border-white/10 bg-white/5 p-6 backdrop-blur-lg shadow-lg">
+
+                    {/* Market Conditions */}
+                    <div className="flex flex-col border-r border-white/10 pr-6 lg:last:border-0 relative">
+                        <span className="text-xs text-gray-400 uppercase tracking-wider mb-2 font-semibold">Market Conditions</span>
+                        <div className="flex justify-between items-center mb-1">
+                            <span className="text-sm text-gray-300">YTD Beta</span>
+                            <span className="font-mono text-lg font-bold text-white">{formatNumber(vitals.ytdBeta)}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-300">Regime</span>
+                            <span className={cn("font-mono text-sm font-bold px-2 py-0.5 rounded", vitals.ytdBeta > 1 ? "bg-amber-500/20 text-amber-400" : "bg-blue-500/20 text-blue-400")}>
+                                {vitals.ytdBeta > 1 ? "Aggressive" : "Defensive"}
+                            </span>
                         </div>
                     </div>
 
-                    <div className="flex flex-col border-r border-white/10 pr-4 last:border-0 pl-4">
-                        <span className="text-xs text-muted-foreground uppercase tracking-wider">2026 YTD Return</span>
-                        <div className="flex items-baseline gap-2 mt-1">
-                            <span className={cn("text-2xl font-bold", vitals.ytdReturn >= 0 ? "text-emerald-400" : "text-rose-400")}>
+                    {/* YTD Return */}
+                    <div className="flex flex-col border-r border-white/10 px-6 lg:last:border-0">
+                        <span className="text-xs text-gray-400 uppercase tracking-wider mb-2 font-semibold">2026 YTD Return</span>
+                        <div className="flex items-baseline gap-3 mb-2">
+                            <span className={cn("text-3xl font-bold tracking-tight", vitals.ytdReturn >= 0 ? "text-emerald-400" : "text-rose-400")}>
                                 {vitals.ytdReturn > 0 ? "+" : ""}{formatPercent(vitals.ytdReturn)}
                             </span>
-                            <span className="text-xs text-muted-foreground">vs {formatPercent(vitals.benchmarkYtd)} (SPY)</span>
+                            <span className="text-xs text-gray-400 font-medium">SPY {formatPercent(vitals.benchmarkYtd)}</span>
+                        </div>
+                        <div className="flex gap-4 text-xs">
+                            <span className="text-indigo-300 font-medium flex items-center gap-1">
+                                🇵🇱 WIG <span className="text-white">{formatPercent(vitals.wigYtd)}</span>
+                            </span>
+                            <span className="text-blue-300 font-medium flex items-center gap-1">
+                                🌍 MSCI <span className="text-white">{formatPercent(vitals.msciYtd)}</span>
+                            </span>
                         </div>
                     </div>
-                    <div className="flex flex-col border-r border-white/10 pr-4 last:border-0 pl-4">
-                        <span className="text-xs text-muted-foreground uppercase tracking-wider text-amber-400 font-bold">Jensen's Alpha (CAPM)</span>
-                        <div className="flex items-baseline gap-2 mt-1">
-                            <span className={cn("text-2xl font-bold", vitals.jensensAlpha >= 0 ? "text-emerald-400" : "text-rose-400")}>
+
+                    {/* PLN Return */}
+                    <div className="flex flex-col border-r border-white/10 px-6 lg:last:border-0">
+                        <span className="text-xs text-gray-400 uppercase tracking-wider mb-2 font-semibold">🇵🇱 YTD in PLN</span>
+                        <div className="flex items-baseline gap-3">
+                            <span className={cn("text-3xl font-bold tracking-tight", vitals.ytdReturnPln >= 0 ? "text-emerald-400" : "text-rose-400")}>
+                                {vitals.ytdReturnPln > 0 ? "+" : ""}{formatPercent(vitals.ytdReturnPln)}
+                            </span>
+                            <span className="text-xs text-gray-500 font-medium bg-white/10 px-2 py-0.5 rounded">incl. FX</span>
+                        </div>
+                    </div>
+
+                    {/* Jensen's Alpha */}
+                    <div className="flex flex-col border-r border-white/10 px-6 lg:last:border-0">
+                        <span className="text-xs text-amber-400 uppercase tracking-wider mb-2 font-bold">Jensen's Alpha</span>
+                        <div className="flex items-baseline gap-3">
+                            <span className={cn("text-3xl font-bold tracking-tight", vitals.jensensAlpha >= 0 ? "text-emerald-400" : "text-rose-400")}>
                                 {vitals.jensensAlpha > 0 ? "+" : ""}{formatPercent(vitals.jensensAlpha)}
                             </span>
-                            <span className="text-xs text-muted-foreground">Annualized</span>
+                            <span className="text-xs text-gray-400">Ann.</span>
                         </div>
                     </div>
-                    <div className="flex flex-col border-r border-white/10 pr-4 last:border-0 pl-4">
-                        <span className="text-xs text-muted-foreground uppercase tracking-wider">YTD Sharpe Ratio</span>
-                        <div className="flex items-baseline gap-2 mt-1">
-                            <span className={cn("text-2xl font-bold", vitals.ytdSharpe > 1 ? "text-emerald-400" : "text-white")}>
+
+                    {/* Risk Efficiency */}
+                    <div className="flex flex-col pl-6">
+                        <span className="text-xs text-gray-400 uppercase tracking-wider mb-2 font-semibold">YTD Efficiency (Sharpe)</span>
+                        <div className="flex items-baseline gap-3 mb-1">
+                            <span className={cn("text-3xl font-bold tracking-tight", vitals.ytdSharpe > 1 ? "text-emerald-400" : "text-white")}>
                                 {formatNumber(vitals.ytdSharpe)}
                             </span>
-                            <span className="text-xs text-muted-foreground">vs {formatNumber(vitals.benchmarkYtdSharpe)} (SPY)</span>
+                            <span className="text-xs text-gray-400">vs {formatNumber(vitals.benchmarkYtdSharpe)}</span>
                         </div>
-                    </div>
-                    <div className="flex flex-col pl-4">
-                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Sharpe (Hist Avg)</span>
-                        <div className="flex items-baseline gap-2 mt-1">
-                            <span className="text-2xl font-bold text-amber-500">
-                                {formatNumber(vitals.sharpe)}
-                            </span>
-                            <span className="text-xs text-muted-foreground">vs {formatNumber(vitals.benchmarkHistSharpe)} (SPY)</span>
+                        <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
+                            <span>Hist Avg:</span>
+                            <span className="font-mono text-amber-500 font-bold">{formatNumber(vitals.sharpe)}</span>
                         </div>
                     </div>
                 </div>
 
                 {/* ROW 1: VITALS (6 Key Metrics) */}
-                <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
+                <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6 mb-6">
                     <MetricCard title="Annual Return" value={formatPercent(vitals.annualReturn)} icon={<TrendingUp className="h-4 w-4 text-emerald-500" />} trend="up" />
                     <MetricCard title="Volatility" value={formatPercent(vitals.annualVol)} icon={<Activity className="h-4 w-4 text-blue-500" />} trend={vitals.annualVol > 0.2 ? 'down' : 'up'} />
                     <MetricCard title="Beta" value={formatNumber(vitals.beta)} icon={<Scale className="h-4 w-4 text-violet-500" />} />
                     <MetricCard title="Sharpe Ratio" value={formatNumber(vitals.sharpe)} icon={<Zap className="h-4 w-4 text-amber-500" />} />
                     <MetricCard title="Max Drawdown" value={formatPercent(vitals.maxDrawdown)} icon={<ShieldCheck className="h-4 w-4 text-rose-500" />} subValue="Peak to Trough" trend="down" />
-                    <MetricCard title="Rolling 1M Vol" value={formatPercent(vitals.rolling1mVol)} icon={<AlertTriangle className="h-4 w-4 text-orange-500" />} description="Recent Volatility" />
+                    <MetricCard
+                        title="Rolling 1M Vol"
+                        value={formatPercent(vitals.rolling1mVol)}
+                        icon={<AlertTriangle className="h-4 w-4 text-orange-500" />}
+                        subValue={`vs ${formatPercent(vitals.rolling1mVolBenchmark)} (SPY)`}
+                    />
                 </div>
 
                 {/* ROW 2: MAIN CHARTS (Performance + Underwater + Monte Carlo) */}
@@ -379,32 +448,82 @@ export const Dashboard: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* 3. Risk Attribution Table */}
+                    {/* 3. Position Summary with YTD Returns */}
                     <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-lg flex flex-col">
                         <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                             <PieChart className="h-4 w-4" /> Position Summary
                         </h3>
+
+                        {/* Longs vs Shorts Summary - Using backend-calculated contributions */}
+                        <div className="grid grid-cols-2 gap-4 mb-4 p-3 bg-white/5 rounded-lg">
+                            <div className="text-center">
+                                <p className="text-xs text-gray-400 uppercase">Longs YTD</p>
+                                <p className={cn("text-lg font-bold font-mono",
+                                    vitals.ytdLongsContrib >= 0 ? 'text-emerald-400' : 'text-rose-400')}>
+                                    {vitals.ytdLongsContrib > 0 ? '+' : ''}{formatPercent(vitals.ytdLongsContrib)}
+                                </p>
+                            </div>
+                            <div className="text-center">
+                                <p className="text-xs text-gray-400 uppercase">Shorts YTD</p>
+                                <p className={cn("text-lg font-bold font-mono",
+                                    vitals.ytdShortsContrib >= 0 ? 'text-emerald-400' : 'text-rose-400')}>
+                                    {vitals.ytdShortsContrib > 0 ? '+' : ''}{formatPercent(vitals.ytdShortsContrib)}
+                                </p>
+                            </div>
+                        </div>
+
                         <div className="flex-1 overflow-y-auto custom-scrollbar">
                             <table className="w-full text-sm">
-                                <thead className="text-left text-gray-400 border-b border-white/10">
+                                <thead className="text-left text-gray-400 border-b border-white/10 sticky top-0 bg-[#0c1425] z-10">
                                     <tr>
-                                        <th className="pb-2">Ticker</th>
-                                        <th className="pb-2 text-right">Weight</th>
-                                        <th className="pb-2 text-right">Risk %</th>
+                                        <th className="pb-2 cursor-pointer hover:text-white" onClick={() => requestSort('ticker')}>
+                                            Ticker {sortConfig.key === 'ticker' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                                        </th>
+                                        <th className="pb-2 text-right cursor-pointer hover:text-white" onClick={() => requestSort('weight')}>
+                                            Weight {sortConfig.key === 'weight' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                                        </th>
+                                        <th className="pb-2 text-right cursor-pointer hover:text-white" onClick={() => requestSort('ytd')}>
+                                            YTD {sortConfig.key === 'ytd' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                                        </th>
+                                        <th className="pb-2 text-right cursor-pointer hover:text-white hidden sm:table-cell" onClick={() => requestSort('r1y')}>
+                                            1Y {sortConfig.key === 'r1y' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                                        </th>
+                                        <th className="pb-2 text-right cursor-pointer hover:text-white hidden md:table-cell" onClick={() => requestSort('r3y')}>
+                                            3Y {sortConfig.key === 'r3y' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                                        </th>
+                                        <th className="pb-2 text-right cursor-pointer hover:text-white" onClick={() => requestSort('pctRisk')}>
+                                            Risk % {sortConfig.key === 'pctRisk' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {riskAttribution.slice(0, 10).map(item => (
-                                        <tr key={item.ticker} className="border-b border-white/5 hover:bg-white/5">
-                                            <td className="py-2 font-medium text-white">{item.ticker}</td>
-                                            <td className={`py-2 text-right font-mono ${item.weight > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                                {item.weight > 0 ? '+' : ''}{formatPercent(item.weight)}
-                                            </td>
-                                            <td className="py-2 text-right font-mono text-amber-400">
-                                                {formatPercent(Math.abs(item.pctRisk))}
-                                            </td>
-                                        </tr>
-                                    ))}
+                                    {sortedRiskAttribution.map(item => {
+                                        const retData = periodicReturns.find(p => p.ticker === item.ticker);
+                                        const ytdRet = retData?.ytd ?? 0;
+                                        const r1y = retData?.r1y;
+                                        const r3y = retData?.r3y;
+
+                                        return (
+                                            <tr key={item.ticker} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                                                <td className="py-2 font-medium text-white">{item.ticker}</td>
+                                                <td className={`py-2 text-right font-mono ${item.weight > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                    {item.weight > 0 ? '+' : ''}{formatPercent(item.weight)}
+                                                </td>
+                                                <td className={`py-2 text-right font-mono ${ytdRet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                    {ytdRet > 0 ? '+' : ''}{formatPercent(ytdRet)}
+                                                </td>
+                                                <td className="py-2 text-right font-mono text-gray-400 hidden sm:table-cell">
+                                                    {r1y !== null && r1y !== undefined ? formatPercent(r1y) : '-'}
+                                                </td>
+                                                <td className="py-2 text-right font-mono text-gray-400 hidden md:table-cell">
+                                                    {r3y !== null && r3y !== undefined ? formatPercent(r3y) : '-'}
+                                                </td>
+                                                <td className="py-2 text-right font-mono text-amber-400">
+                                                    {formatPercent(Math.abs(item.pctRisk))}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         </div>
