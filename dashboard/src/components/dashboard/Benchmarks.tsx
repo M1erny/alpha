@@ -12,7 +12,7 @@ export const Benchmarks: React.FC<BenchmarksProps> = ({ vitals }) => {
     return (
         <div className="flex gap-4 text-xs">
             <span className="text-indigo-300 font-medium flex items-center gap-1">
-                🇵🇱 WIG <span className="text-white">{formatPercent(vitals.wigYtd)}</span>
+                🇵🇱 WIG20 <span className="text-white">{formatPercent(vitals.wigYtd)}</span>
             </span>
             <span className="text-blue-300 font-medium flex items-center gap-1">
                 🌍 MSCI <span className="text-white">{formatPercent(vitals.msciYtd)}</span>

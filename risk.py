@@ -41,7 +41,7 @@ PORTFOLIO_CONFIG = {
 }
 
 BENCHMARK = 'SPY'
-BENCHMARK_WIG = 'WIG.WA'    # Polish WIG Index
+BENCHMARK_WIG = 'WIG20.WA'  # Polish WIG20 Index
 BENCHMARK_MSCI = 'URTH'     # iShares MSCI World ETF
 BASE_CURRENCY = 'USD'
 LOOKBACK_YEARS = 6
@@ -195,7 +195,8 @@ def calculate_risk_metrics(price_df):
             
             # If ticker didn't exist yet (return is 0), it contributes 0.
             # This implicitly assumes "Cash" was held instead.
-            portfolio_daily_ret += returns_df[ticker] * weight * direction
+            # Use fillna(0) to ensure missing returns (incomplete data) don't poison the whole portfolio series
+            portfolio_daily_ret += returns_df[ticker].fillna(0.0) * weight * direction
             active_tickers.append(ticker)
 
     # --- 1.5 LEVERAGE COST (DRAG) ---
@@ -215,9 +216,17 @@ def calculate_risk_metrics(price_df):
     ANNUAL_FACTOR = 252
     
     # Beta
-    covariance = np.cov(portfolio_daily_ret, benchmark_ret)[0][1]
-    market_variance = np.var(benchmark_ret)
-    portfolio_beta = covariance / market_variance
+    # Beta (Robust Calculation)
+    valid_mask = ~(np.isnan(portfolio_daily_ret) | np.isnan(benchmark_ret))
+    clean_port = portfolio_daily_ret[valid_mask]
+    clean_bench = benchmark_ret[valid_mask]
+    
+    if len(clean_bench) > 1:
+        covariance = np.cov(clean_port, clean_bench)[0][1]
+        market_variance = np.var(clean_bench)
+        portfolio_beta = covariance / market_variance if market_variance > 0 else 0
+    else:
+        portfolio_beta = 0
     
     # Volatility (Annualized)
     daily_vol = np.std(portfolio_daily_ret)
@@ -275,8 +284,15 @@ def calculate_risk_metrics(price_df):
             signed_weight = weight * direction
             
             asset_ret = returns_df[ticker]
-            # Covariance between Asset and Portfolio
-            cov_asset_port = np.cov(asset_ret, portfolio_daily_ret)[0][1]
+            # Covariance between Asset and Portfolio (Robust to NaNs)
+            valid_mask = ~(np.isnan(asset_ret) | np.isnan(portfolio_daily_ret))
+            clean_asset = asset_ret[valid_mask]
+            clean_port = portfolio_daily_ret[valid_mask]
+            
+            if len(clean_asset) > 1:
+                cov_asset_port = np.cov(clean_asset, clean_port)[0][1]
+            else:
+                cov_asset_port = 0
             
             # Marginal Contribution to Volatility
             mctr = (cov_asset_port * signed_weight) / daily_vol
@@ -341,7 +357,10 @@ def calculate_risk_metrics(price_df):
     if not ytd_prices.empty and len(ytd_prices) > 1:
         # --- BUY & HOLD SIMULATION ---
         # Normalize prices to start at 1.0
-        ytd_rel_prices = ytd_prices / ytd_prices.iloc[0]
+        # Use ffill() to handle missing data (e.g. if today's price is missing for one ticker, use yesterday's)
+        # This prevents the portfolio value from dropping as if the asset went to 0.
+        ytd_prices_filled = ytd_prices.ffill() 
+        ytd_rel_prices = ytd_prices_filled / ytd_prices.iloc[0]
         
         # Calculate Value Series: Sum(Weight * Normalized_Price)
         # Note: Short positions are: -1 * Weight * (Price_Ratio - 1) for PL... 
@@ -431,6 +450,14 @@ def calculate_risk_metrics(price_df):
         bench_ytd_ann_ret = np.mean(ytd_benchmark) * ANNUAL_FACTOR
         bench_ytd_sharpe = (bench_ytd_ann_ret - rf_rate) / bench_ytd_vol if bench_ytd_vol > 0 else 0
         
+        # YTD Jensen's Alpha
+        # Alpha = Rp - (Rf + Beta * (Rm - Rf))
+        # Use annualized YTD returns for comparable alpha
+        ytd_expected_return = rf_rate + ytd_beta * (bench_ytd_ann_ret - rf_rate)
+        ytd_alpha = ytd_ann_ret - ytd_expected_return
+
+        # Benchmark Historical Sharpe
+
         # Benchmark Historical Sharpe
         bench_ann_vol = np.std(benchmark_ret) * np.sqrt(ANNUAL_FACTOR)
         bench_hist_sharpe = (annual_bench_ret - rf_rate) / bench_ann_vol if bench_ann_vol > 0 else 0
@@ -557,6 +584,7 @@ def calculate_risk_metrics(price_df):
         'MSCI_YTD': msci_ytd,
         'YTD_Longs_Contrib': ytd_longs_contrib,
         'YTD_Shorts_Contrib': ytd_shorts_contrib,
+        'YTD_Alpha': ytd_alpha,
         'Returns_Stream': portfolio_daily_ret,
         'Net_Stream': portfolio_net_ret, # Post-fee
         'Benchmark_Stream': benchmark_ret, 
@@ -569,7 +597,9 @@ def calculate_risk_metrics(price_df):
             'Gross_Exp': total_long_weight + total_short_weight,
             'Net_Exp': total_long_weight - total_short_weight,
             'Daily_Drag': total_daily_drag
-        }
+        },
+        'YTD_Stream': portfolio_val_series if 'portfolio_val_series' in locals() else None,
+        'YTD_Benchmark_Stream': ytd_benchmark if 'ytd_benchmark' in locals() else None
     }
 
 def stress_test_portfolio(metrics):

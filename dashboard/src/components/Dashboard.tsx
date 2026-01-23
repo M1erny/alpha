@@ -1,13 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { fetchDashboardData, type FullRiskReport } from '../utils/finance';
-import { AlertTriangle, LayoutDashboard } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { Header } from './dashboard/Header';
 import { ExecutiveSummary } from './dashboard/ExecutiveSummary';
 import { VitalsGrid } from './dashboard/VitalsGrid';
 import { ChartsSection } from './dashboard/ChartsSection';
 import { RiskAnalysis } from './dashboard/RiskAnalysis';
 import { PositionsTable } from './dashboard/PositionsTable';
-import { cn } from '../lib/utils'; // Keep cn from original
 
 export const Dashboard: React.FC = () => {
     const [data, setData] = useState<FullRiskReport | null>(null);
@@ -31,6 +30,7 @@ export const Dashboard: React.FC = () => {
                         // Fix date string handling if needed
                         setData(metricsRes);
                         setConnectionError(null);
+                        setStatusMsg("System Online");
                     } else {
                         setConnectionError("Failed to load dashboard data.");
                     }
@@ -52,9 +52,8 @@ export const Dashboard: React.FC = () => {
         setStatusMsg("Establishing Connection...");
         pollStatus();
         return () => { isActive = false; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
-
-    const formatPercent = (val: number | undefined) => typeof val === 'number' ? `${(val * 100).toFixed(2)}%` : 'N/A';
 
     // Loading Screen
     if (loading && !data) {
@@ -111,7 +110,7 @@ export const Dashboard: React.FC = () => {
     // Safety check just in case
     if (!data) return null;
 
-    const { vitals, leverage, riskAttribution, stressTests, history, periodicReturns, error: backendError } = data;
+    const { vitals, leverage, riskAttribution, stressTests, history, periodicReturns, ytdHistory, error: backendError } = data;
 
     return (
         <div className="min-h-screen bg-background text-foreground p-6 md:p-8">
@@ -141,7 +140,7 @@ export const Dashboard: React.FC = () => {
 
                 <VitalsGrid vitals={vitals} />
 
-                <ChartsSection history={history} leverage={leverage} />
+                <ChartsSection history={history} ytdHistory={ytdHistory} leverage={leverage} />
 
                 <div className="grid gap-6 lg:grid-cols-3 h-auto">
                     {/* Reordered: Stress Tests (RiskAnalysis) first, then Positions Table */}

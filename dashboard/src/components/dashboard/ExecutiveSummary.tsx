@@ -39,9 +39,7 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({ vitals }) =>
                     <span className="text-xs text-gray-400 font-medium">SPY {formatPercent(vitals.benchmarkYtd)}</span>
                 </div>
                 <div className="flex gap-4 text-xs">
-                    <span className="text-indigo-300 font-medium flex items-center gap-1">
-                        🇵🇱 WIG <span className="text-white">{formatPercent(vitals.wigYtd)}</span>
-                    </span>
+
                     <span className="text-blue-300 font-medium flex items-center gap-1">
                         🌍 MSCI <span className="text-white">{formatPercent(vitals.msciYtd)}</span>
                     </span>
@@ -62,11 +60,13 @@ export const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({ vitals }) =>
             {/* Jensen's Alpha */}
             <div className="flex flex-col border-r border-white/10 px-6 lg:last:border-0">
                 <span className="text-xs text-amber-400 uppercase tracking-wider mb-2 font-bold">Jensen's Alpha</span>
-                <div className="flex items-baseline gap-3">
-                    <span className={cn("text-3xl font-bold tracking-tight", vitals.jensensAlpha >= 0 ? "text-emerald-400" : "text-rose-400")}>
-                        {vitals.jensensAlpha > 0 ? "+" : ""}{formatPercent(vitals.jensensAlpha)}
-                    </span>
-                    <span className="text-xs text-gray-400">Ann.</span>
+                <div className="flex flex-col gap-1">
+                    <div className="flex items-baseline gap-3">
+                        <span className={cn("text-3xl font-bold tracking-tight", vitals.ytdAlpha >= 0 ? "text-emerald-400" : "text-rose-400")}>
+                            {vitals.ytdAlpha > 0 ? "+" : ""}{formatPercent(vitals.ytdAlpha)}
+                        </span>
+                        <span className="text-xs text-gray-400">YTD</span>
+                    </div>
                 </div>
             </div>
 

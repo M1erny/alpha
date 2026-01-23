@@ -98,6 +98,7 @@ async def get_metrics():
                 
                 # New YTD Fields
                 "ytdReturn": to_float(metrics.get('YTD_Return')),
+                "ytdAlpha": to_float(metrics.get('YTD_Alpha')),
                 "benchmarkYtd": to_float(metrics.get('Benchmark_YTD')),
                 "ytdBeta": to_float(metrics.get('YTD_Beta')),
                 
@@ -180,6 +181,57 @@ async def get_metrics():
                 "benchmark": to_float(benchmark_cum.loc[date]),
                 "drawdown": to_float(drawdown_stream.loc[date])
             })
+
+        # Format YTD History (Base 100k)
+        response["ytdHistory"] = []
+        if metrics.get('YTD_Stream') is not None:
+            ytd_port = metrics['YTD_Stream']
+            # Reconstruct YTD Benchmark Value Series (Start=1.0)
+            ytd_bench_ret = metrics.get('YTD_Benchmark_Stream')
+            
+            if ytd_port is not None and not ytd_port.empty:
+                 # Benchmark might be returns series, need convert to price index starting 1.0
+                if ytd_bench_ret is not None and not ytd_bench_ret.empty:
+                    ytd_bench_idx = (1 + ytd_bench_ret).cumprod()
+                    # Align start to 1.0 (it starts at 1+r, so we need to prepend 1.0 or just rebase)
+                    # Easier: ytd_bench_idx / ytd_bench_idx.iloc[0] * (1 + first_ret)? 
+                    # Actually standard way: Price_t = Price_{t-1} * (1+r_t). Start at 100k.
+                    # ytd_bench_ret is daily returns.
+                    ytd_bench_vals = (1 + ytd_bench_ret).cumprod()
+                    # Prepend starting value 1.0 if possible, or just normalize
+                    # Simplest: assume first return is from Day 1. Day 0 is 100k.
+                    # We will just plot the available series scaled to 100k.
+                    pass
+                
+                # Align dates
+                for date in ytd_port.index:
+                    date_str = date.strftime('%Y-%m-%d')
+                    
+                    port_val = ytd_port.loc[date] * 100000
+                    
+                    bench_val = None
+                    if ytd_bench_ret is not None and date in ytd_bench_ret.index:
+                         # This is approximate as we need full series for accurate index
+                         # Let's do it properly outside loop
+                         pass
+                    
+                    response["ytdHistory"].append({
+                        "date": date_str,
+                        "portfolio": to_float(port_val),
+                        "benchmark": None # calculated below
+                    })
+
+                # Proper Benchmark Index Calculation
+                if ytd_bench_ret is not None and not ytd_bench_ret.empty:
+                    # Align to portfolio dates
+                    aligned_bench = ytd_bench_ret.reindex(ytd_port.index).fillna(0)
+                    bench_curve = (1 + aligned_bench).cumprod() * 100000
+                    
+                    for i, item in enumerate(response["ytdHistory"]):
+                        date = item["date"]
+                        # Map back
+                        if i < len(bench_curve):
+                             item["benchmark"] = to_float(bench_curve.iloc[i])
 
         # Sanitize Monte Carlo values too
         for mc_point in response["monteCarlo"]:

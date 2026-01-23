@@ -28,6 +28,7 @@ export interface Vitals {
     ytdLongsContrib: number;
     ytdShortsContrib: number;
     jensensAlpha: number;
+    ytdAlpha: number;
     periodInfo: PeriodInfo;
 }
 
@@ -81,6 +82,7 @@ export interface FullRiskReport {
     periodicReturns: PeriodicReturn[];
     monteCarlo: MonteCarloPoint[];
     history: HistoryPoint[];
+    ytdHistory?: HistoryPoint[]; // New field for YTD 100k chart
     error?: string; // Optional error message from backend
 }
 
