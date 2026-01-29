@@ -345,12 +345,16 @@ def calculate_risk_metrics(price_df):
     if hasattr(benchmark_ret.index, 'tz'):
         benchmark_ret.index = benchmark_ret.index.tz_localize(None)
 
+    # Pre-fill prices to handle holidays (e.g. if Dec 31 is holiday for some tickers)
+    # This ensures we get the last available price from previous year as the base.
+    price_df_filled = price_df.ffill()
+
     # Find the index of the first date >= current_year
     # We want to slice from [prev_date : end]
     # This effectively makes the "YTD Stream" start at the Prev Year Close (Day 0)
     
     # Fallback default
-    ytd_prices = price_df[price_df.index >= ytd_calc_start]
+    ytd_prices = pd.DataFrame() 
     ytd_benchmark = benchmark_ret[benchmark_ret.index >= ytd_calc_start]
     
     # Try to find the insertion point
@@ -360,7 +364,8 @@ def calculate_risk_metrics(price_df):
         start_idx_loc = price_df.index.searchsorted(pd.Timestamp(ytd_calc_start))
         if start_idx_loc > 0:
             # Include the previous day (Year-End Close)
-            ytd_prices = price_df.iloc[start_idx_loc-1 :]
+            # We use the FILLED dataframe so we get Dec 30 price on the Dec 31 row if needed
+            ytd_prices = price_df_filled.iloc[start_idx_loc-1 :]
             
         # Do the same for benchmark returns -> wait, benchmark is returns.
         # For benchmark, if we have returns, the "YTD Return" is usually sum/prod of returns starting Jan 2.
@@ -378,14 +383,16 @@ def calculate_risk_metrics(price_df):
     except Exception as e:
         print(f"Error adjusting YTD Start Date: {e}")
         # Fallback to current year start is already set
+        ytd_prices = price_df_filled[price_df_filled.index >= ytd_calc_start]
         pass
 
     if not ytd_prices.empty and len(ytd_prices) > 1:
         # --- BUY & HOLD SIMULATION ---
         # Normalize prices to start at 1.0
         # This "Start" is now effectively Dec 31st (Price_0)
+        # Note: ytd_prices is already filled from history, but let's ffill forward too if any holes remain?
         ytd_prices_filled = ytd_prices.ffill() 
-        ytd_rel_prices = ytd_prices_filled / ytd_prices.iloc[0]
+        ytd_rel_prices = ytd_prices_filled / ytd_prices_filled.iloc[0]
         
         # Calculate Value Series
         portfolio_val_series = pd.Series(0.0, index=ytd_rel_prices.index)
@@ -413,10 +420,11 @@ def calculate_risk_metrics(price_df):
                 
                 # Final Contribution (for summary)
                 final_contrib = position_contrib.iloc[-1]
-                if direction == 1:
-                    ytd_longs_contrib += final_contrib
-                else:
-                    ytd_shorts_contrib += final_contrib
+                if not pd.isna(final_contrib):
+                    if direction == 1:
+                        ytd_longs_contrib += final_contrib
+                    else:
+                        ytd_shorts_contrib += final_contrib
 
         # Add initial base (1.0)
         portfolio_val_series += 1.0
