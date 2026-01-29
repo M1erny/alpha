@@ -566,6 +566,7 @@ def calculate_risk_metrics(price_df):
         'Rolling_1M_Vol': rolling_1m_vol,
         'Benchmark_Rolling_1M_Vol': bench_rolling_1m_vol,
         'CVaR_95': cvar_95,
+        'VaR_95': var_95,
         'Max_Drawdown': max_drawdown,
         'Jensens_Alpha': jensens_alpha,
         'Period_Info': {
