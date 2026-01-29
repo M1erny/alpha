@@ -333,86 +333,85 @@ def calculate_risk_metrics(price_df):
 
     # --- 5. YTD METRICS ---
     current_year = datetime.now().year
-    ytd_start = f"{current_year}-01-01"
+    ytd_calc_start = f"{current_year}-01-01"
     
-    # Filter for YTD data
-    # Filter for YTD data
-    with open("debug_risk.txt", "w") as f:
-        f.write(f"DEBUG: YTD Start: {ytd_start}\n")
+    # Standard YTD Logic: Return = (Current_Price - Prev_Year_Close) / Prev_Year_Close
+    # To implement this, we need to include the last data point from the previous year in our "YTD Series"
+    # or explicitly fetch that "base price".
     
-    # 1. Get Price Data for YTD (from price_df which is an input)
-    # Ensure timezone handling works (strip tz if present)
+    # Check timezone again to be safe
     if hasattr(price_df.index, 'tz'):
         price_df.index = price_df.index.tz_localize(None)
-        
-    ytd_prices = price_df[price_df.index >= ytd_start]
-
     if hasattr(benchmark_ret.index, 'tz'):
         benchmark_ret.index = benchmark_ret.index.tz_localize(None)
-    ytd_benchmark = benchmark_ret[benchmark_ret.index >= ytd_start]
+
+    # Find the index of the first date >= current_year
+    # We want to slice from [prev_date : end]
+    # This effectively makes the "YTD Stream" start at the Prev Year Close (Day 0)
     
-    with open("debug_risk.txt", "a") as f:
-        f.write(f"DEBUG: YTD Price Rows Found: {len(ytd_prices)}\n")
+    # Fallback default
+    ytd_prices = price_df[price_df.index >= ytd_calc_start]
+    ytd_benchmark = benchmark_ret[benchmark_ret.index >= ytd_calc_start]
+    
+    # Try to find the insertion point
+    # Search for the first index that is >= ytd_calc_start
+    # using searchsorted on the index
+    try:
+        start_idx_loc = price_df.index.searchsorted(pd.Timestamp(ytd_calc_start))
+        if start_idx_loc > 0:
+            # Include the previous day (Year-End Close)
+            ytd_prices = price_df.iloc[start_idx_loc-1 :]
+            
+        # Do the same for benchmark returns -> wait, benchmark is returns.
+        # For benchmark, if we have returns, the "YTD Return" is usually sum/prod of returns starting Jan 2.
+        # But for consistency in the "Growth Chart" starting at 0%, we usually just cumulate from Jan 1.
+        # However, if we want to align the chart:
+        # Day 0 (Dec 31): Val = 1.0
+        # Day 1 (Jan 2): Val = 1.0 * (1 + r_jan2)
+        # So we just need the returns from >= Jan 1.
+        
+        # But the user asked for "standard calculation" for performance.
+        # If we just sum returns from Jan 2, that IS (P_curr / P_prev_close) - 1.
+        # So for Benchmark *Returns* Series, we don't need to change the slice (it should start Jan 2).
+        # We only need to be careful if we are comparing price series.
+        pass
+    except Exception as e:
+        print(f"Error adjusting YTD Start Date: {e}")
+        # Fallback to current year start is already set
+        pass
 
     if not ytd_prices.empty and len(ytd_prices) > 1:
         # --- BUY & HOLD SIMULATION ---
         # Normalize prices to start at 1.0
-        # Use ffill() to handle missing data (e.g. if today's price is missing for one ticker, use yesterday's)
-        # This prevents the portfolio value from dropping as if the asset went to 0.
+        # This "Start" is now effectively Dec 31st (Price_0)
         ytd_prices_filled = ytd_prices.ffill() 
         ytd_rel_prices = ytd_prices_filled / ytd_prices.iloc[0]
         
-        # Calculate Value Series: Sum(Weight * Normalized_Price)
-        # Note: Short positions are: -1 * Weight * (Price_Ratio - 1) for PL... 
-        # Actually easier: Value_Contribution = Weight * Price_Ratio * Direction?
-        # Let's stick to the Portfolio Value conceptual model:
-        # V_t = Cash + Sum(Active_Positions_t)
-        # But we assume fully invested or cash is static.
-        # Simplest B&H proxy: Sum(Signed_Weight * Relative_Price_Change) + 1?
-        # No.
-        # Correct B&H Value Evolution (starting at V=1):
-        # V_t = Sum( |w_i| * (1 + direction_i * (P_t/P_0 - 1)) ) + (1 - Sum(|w_i|)) * 1.0 (Cash)
-        # Assumes weights sum to <= 100% equity. 
-        # If levered (Sum(|w|) > 1), then Cash is negative (margin loan).
-        
-        # Let's construct the components.
+        # Calculate Value Series
         portfolio_val_series = pd.Series(0.0, index=ytd_rel_prices.index)
-        
-        # Cash Component (Uninvested Equity)
-        total_gross_weight = 0
         
         ytd_longs_contrib = 0
         ytd_shorts_contrib = 0
         
+        # NOTE: If ytd_prices includes Dec 31, then ytd_rel_prices[0] is 1.0 by definition.
+        # The code below calculates contribution based on (Price_t / Price_0 - 1).
+        # At t=0 (Dec 31), Price_t=Price_0 => Contrib = 0.
+        # This correctly starts the chart at 0% (Value 1.0) on Dec 31.
+        
         for ticker in active_tickers:
             info = PORTFOLIO_CONFIG[ticker]
-            weight = info['weight'] # Absolute weight
+            weight = info['weight'] 
             direction = 1 if info['type'] == 'Long' else -1
             
-            total_gross_weight += weight 
-            
-            # Asset Return Series (Cumulative from start)
             # Check if ticker exists
             if ticker in ytd_rel_prices.columns:
                 asset_cum_ret = ytd_rel_prices[ticker] - 1
                 
                 # Position Contribution
                 position_contrib = weight * direction * asset_cum_ret
-                portfolio_val_series += position_contrib.fillna(0) # Handle NaN if any
+                portfolio_val_series += position_contrib.fillna(0)
                 
-                # Log first ticker detail
-                if ticker == active_tickers[0]:
-                     with open("debug_risk.txt", "a") as f:
-                        f.write(f"DEBUG: Ticker {ticker} Weight: {weight} Direction: {direction}\n")
-                        f.write(f"DEBUG: {ticker} Start Price: {ytd_prices[ticker].iloc[0]} End Price: {ytd_prices[ticker].iloc[-1]}\n")
-                        f.write(f"DEBUG: {ticker} Cum Ret: {asset_cum_ret.iloc[-1]:.4f}\n")
-
-            else:
-                 with open("debug_risk.txt", "a") as f:
-                    f.write(f"WARNING: Ticker {ticker} not in ytd_rel_prices columns!\n")
-            
-            # Final Contribution (for summary)
-            if ticker in ytd_rel_prices.columns:
+                # Final Contribution (for summary)
                 final_contrib = position_contrib.iloc[-1]
                 if direction == 1:
                     ytd_longs_contrib += final_contrib
@@ -428,9 +427,9 @@ def calculate_risk_metrics(price_df):
 
         # Derive Daily Returns for Vol/Beta/Sharpe consistency
         ytd_portfolio_daily_ret = portfolio_val_series.pct_change().dropna()
-        # Align benchmark to this series using reindex (handles missing dates gracefully)
+        
+        # Align benchmark
         ytd_benchmark_aligned = ytd_benchmark.reindex(ytd_portfolio_daily_ret.index).dropna()
-        # Also filter portfolio to matched dates
         ytd_portfolio_daily_ret = ytd_portfolio_daily_ret.loc[ytd_benchmark_aligned.index]
 
         # YTD Beta
@@ -440,7 +439,6 @@ def calculate_risk_metrics(price_df):
             ytd_beta = 0
             
         # Risk Efficiency -> YTD Sharpe
-        # Annualized Vol for YTD (using B&H daily returns)
         ytd_vol = np.std(ytd_portfolio_daily_ret) * np.sqrt(ANNUAL_FACTOR)
         ytd_ann_ret = np.mean(ytd_portfolio_daily_ret) * ANNUAL_FACTOR
         ytd_sharpe = (ytd_ann_ret - rf_rate) / ytd_vol if ytd_vol > 0 else 0
@@ -451,12 +449,8 @@ def calculate_risk_metrics(price_df):
         bench_ytd_sharpe = (bench_ytd_ann_ret - rf_rate) / bench_ytd_vol if bench_ytd_vol > 0 else 0
         
         # YTD Jensen's Alpha
-        # Alpha = Rp - (Rf + Beta * (Rm - Rf))
-        # Use annualized YTD returns for comparable alpha
         ytd_expected_return = rf_rate + ytd_beta * (bench_ytd_ann_ret - rf_rate)
         ytd_alpha = ytd_ann_ret - ytd_expected_return
-
-        # Benchmark Historical Sharpe
 
         # Benchmark Historical Sharpe
         bench_ann_vol = np.std(benchmark_ret) * np.sqrt(ANNUAL_FACTOR)
@@ -464,20 +458,30 @@ def calculate_risk_metrics(price_df):
         
         # PLN Return (USD Return + FX Change)
         try:
-            # Using a more robust fetch approach and logging errors
             usdpln = yf.Ticker("USDPLN=X")
-            # Fetch slightly more history to ensure we get a valid start price
-            # REMOVED progress=False as it caused an error with some yfinance versions? 
-            # Actually standard yf.history has it, but yf.Ticker object's history might vary or be bugged.
-            # Safety: remove it.
-            pln_hist = usdpln.history(start=(pd.Timestamp(ytd_start) - pd.Timedelta(days=5)))
+            # Fetch explicitly covering end of last year
+            pln_hist = usdpln.history(start=(pd.Timestamp(ytd_calc_start) - pd.Timedelta(days=10)))
             
             if not pln_hist.empty:
-                # Find the closest available price to YTD start
-                if ytd_start in pln_hist.index:
-                    pln_start_val = pln_hist.loc[ytd_start]['Close']
+                # Find the closest available price to YTD start (Dec 31 if possible, else Jan 1/2)
+                # We want the last price BEFORE or ON ytd_calc_start (actually before Jan 1 usually means Dec 31)
+                # But since we use simple pct_change for FX, let's just grab the price at the START of our ytd_prices period.
+                
+                target_start_date = ytd_prices.index[0] # Should be Dec 31 or Jan 2
+                
+                # Find available index closest to target_start_date
+                # Using searchsorted / get_indexer methodology or just loop
+                
+                # Simplest: reindex
+                idx_loc = pln_hist.index.searchsorted(target_start_date)
+                # If exact match or close
+                if idx_loc < len(pln_hist) and pln_hist.index[idx_loc] == target_start_date:
+                    pln_start_val = pln_hist['Close'].iloc[idx_loc]
+                elif idx_loc > 0:
+                     # If target date (e.g. Dec 31) exists, it should be matched. 
+                     # If not (maybe FX trades on Jan 1?), take closest previous.
+                     pln_start_val = pln_hist['Close'].iloc[idx_loc-1]
                 else:
-                    # Fallback to the first available price in the fetched range (which includes 5 days prior)
                     pln_start_val = pln_hist['Close'].iloc[0]
                 
                 pln_end_val = pln_hist['Close'].iloc[-1]
@@ -485,26 +489,20 @@ def calculate_risk_metrics(price_df):
                 fx_ytd_change = (pln_end_val - pln_start_val) / pln_start_val
                 ytd_return_pln = (1 + ytd_return) * (1 + fx_ytd_change) - 1
                 
-                with open("debug_risk.txt", "a") as f:
-                    f.write(f"DEBUG: PLN Start: {pln_start_val}, End: {pln_end_val}, FX Change: {fx_ytd_change:.4%}\n")
             else:
-                with open("debug_risk.txt", "a") as f:
-                    f.write("DEBUG: PLN History Empty\n")
                 ytd_return_pln = ytd_return
-                fx_ytd_change = 0
                 
         except Exception as e:
-            with open("debug_risk.txt", "a") as f:
-                f.write(f"DEBUG: PLN Fetch Error: {str(e)}\n")
             ytd_return_pln = ytd_return
-            fx_ytd_change = 0
         
-        # WIG YTD (in PLN, need to convert to USD for comparison)
+        # WIG YTD
         if BENCHMARK_WIG in returns_df.columns:
             wig_ret = returns_df[BENCHMARK_WIG]
             if hasattr(wig_ret.index, 'tz') and wig_ret.index.tz is not None:
                 wig_ret.index = wig_ret.index.tz_localize(None)
-            ytd_wig = wig_ret[wig_ret.index >= ytd_start]
+            # Use same logic? Benchmarks are returns streams here, not prices.
+            # So just summing returns from Jan 1 is correct.
+            ytd_wig = wig_ret[wig_ret.index >= ytd_calc_start]
             wig_ytd = (1 + ytd_wig).prod() - 1 if not ytd_wig.empty else 0
         else:
             wig_ytd = 0
@@ -514,29 +512,24 @@ def calculate_risk_metrics(price_df):
             msci_ret = returns_df[BENCHMARK_MSCI]
             if hasattr(msci_ret.index, 'tz') and msci_ret.index.tz is not None:
                 msci_ret.index = msci_ret.index.tz_localize(None)
-            ytd_msci = msci_ret[msci_ret.index >= ytd_start]
+            ytd_msci = msci_ret[msci_ret.index >= ytd_calc_start]
             msci_ytd = (1 + ytd_msci).prod() - 1 if not ytd_msci.empty else 0
         else:
             msci_ytd = 0
             
-        # Longs/Shorts Contribution (HF Best Practice: use actual compounded contribution)
-        ytd_longs_contrib = 0.0
-        ytd_shorts_contrib = 0.0
-        for ticker, info in PORTFOLIO_CONFIG.items():
-            if ticker in returns_df.columns:
-                ticker_ret = returns_df[ticker]
-                if hasattr(ticker_ret.index, 'tz') and ticker_ret.index.tz is not None:
-                    ticker_ret.index = ticker_ret.index.tz_localize(None)
-                ytd_ticker = ticker_ret[ticker_ret.index >= ytd_start]
-                if not ytd_ticker.empty:
-                    ticker_ytd_ret = (1 + ytd_ticker).prod() - 1
-                    weight = info['weight']
-                    direction = 1 if info['type'] == 'Long' else -1
-                    contribution = ticker_ytd_ret * weight * direction
-                    if info['type'] == 'Long':
-                        ytd_longs_contrib += contribution
-                    else:
-                        ytd_shorts_contrib += contribution
+        # Longs/Shorts Contribution 
+        # Needs to align with the new base logic? 
+        # Since we use ytd_rel_prices logic above for total portfolio, this loop for granular contribution
+        # should ideally match.
+        # Note: Above we calculate "ytd_longs_contrib" and "ytd_shorts_contrib" in the main loop.
+        # The loop below was recalculating it differently. Let's just use the ones from the main loop!
+        # But wait, the main loop calculates portfolio *weighted* contribution.
+        # The variables `ytd_longs_contrib` were already accumulated there.
+        # So we can remove the redundant loop below or update it?
+        # The redundant loop calculates it slightly differently using product of returns.
+        # Let's stick effectively to the main loop's result as it matches the "YTD Return" number exactly by definition.
+        
+        # DO NOTHING here, we already calculated ytd_longs_contrib in the loop above.
         
     else:
         ytd_return = 0.0
@@ -553,9 +546,6 @@ def calculate_risk_metrics(price_df):
 
     with open("debug_risk.txt", "a") as f:
         f.write(f"DEBUG: YTD Return (Cum): {ytd_return:.4%}\n")
-        f.write(f"DEBUG: YTD Ann Return: {ytd_ann_ret if 'ytd_ann_ret' in locals() else 0:.4%}\n")
-        f.write(f"DEBUG: YTD Vol: {ytd_vol if 'ytd_vol' in locals() else 0:.4%}\n")
-        f.write(f"DEBUG: Bench YTD: {benchmark_ytd:.4%}\n")
 
     return {
         'Beta': portfolio_beta,
@@ -587,7 +577,7 @@ def calculate_risk_metrics(price_df):
         'YTD_Shorts_Contrib': ytd_shorts_contrib,
         'YTD_Alpha': ytd_alpha,
         'Returns_Stream': portfolio_daily_ret,
-        'Net_Stream': portfolio_net_ret, # Post-fee
+        'Net_Stream': portfolio_net_ret, 
         'Benchmark_Stream': benchmark_ret, 
         'Drawdown_Stream': drawdown,
         'Risk_Attribution': risk_contribution,
@@ -682,12 +672,24 @@ def calculate_periodic_returns(data):
         ticker_res = {}
         
         # Calculate YTD return
-        ytd_series = series[series.index >= ytd_start]
-        if not ytd_series.empty and len(ytd_series) > 1:
-            ytd_start_price = ytd_series.iloc[0]
-            ticker_res['YTD'] = (current_price - ytd_start_price) / ytd_start_price
-        else:
-            ticker_res['YTD'] = np.nan
+        # Logic: Use the price at the close of the PREVIOUS year (last price before ytd_start)
+        # Find index of first date >= ytd_start
+        try:
+             # searchsorted finds the first index >= value
+            idx_start = series.index.searchsorted(pd.Timestamp(ytd_start))
+            if idx_start > 0:
+                # Include the previous observation (Year-end Close) as the starting price
+                ytd_start_price = series.iloc[idx_start - 1]
+                ticker_res['YTD'] = (current_price - ytd_start_price) / ytd_start_price
+            elif idx_start == 0:
+                 # No data before Jan 1 (e.g. IPO), use first available
+                ytd_start_price = series.iloc[0]
+                ticker_res['YTD'] = (current_price - ytd_start_price) / ytd_start_price
+            else:
+                 # Should not happen unless series is empty
+                 ticker_res['YTD'] = np.nan
+        except:
+             ticker_res['YTD'] = np.nan
         
         # Calculate standard periods
         for p_name, days in periods.items():
