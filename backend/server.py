@@ -108,6 +108,7 @@ async def get_metrics():
                 "msciYtd": to_float(metrics.get('MSCI_YTD')),
                 "ytdLongsContrib": to_float(metrics.get('YTD_Longs_Contrib')),
                 "ytdShortsContrib": to_float(metrics.get('YTD_Shorts_Contrib')),
+                "fxWatchlist": metrics.get('Fx_Watchlist', {}),
                 "currencyExposure": {}, # Will be populated below
             },
             "leverage": metrics['Leverage_Stats'],

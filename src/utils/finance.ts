@@ -116,78 +116,30 @@ export const fetchDashboardData = async (retries = 5, delay = 1000, force = fals
             } else {
                 const data = await response.json();
 
-                // Map API response to Frontend Interface
-                // Fallback for missing keys (like Fx_Watchlist if backend isn't updated)
-                const vitals: Vitals = {
-                    beta: data.Beta,
-                    annualReturn: data.Annual_Return,
-                    annualVol: data.Annual_Vol,
-                    sharpe: data.Sharpe,
-                    sortino: data.Sortino,
-                    maxDrawdown: data.Max_Drawdown,
-                    rolling1mVol: data.Rolling_1M_Vol,
-                    rolling1mVolBenchmark: data.Benchmark_Rolling_1M_Vol,
-                    cvar95: data.CVaR_95,
-                    ytdReturn: data.YTD_Return,
-                    benchmarkYtd: data.Benchmark_YTD,
-                    benchmarkVol: 0, // Not explicitly passed?
-                    ytdBeta: data.YTD_Beta,
-                    ytdSharpe: data.YTD_Sharpe,
-                    benchmarkYtdSharpe: data.Benchmark_YTD_Sharpe,
-                    benchmarkHistSharpe: data.Benchmark_Hist_Sharpe,
-                    ytdReturnPln: data.YTD_Return_PLN,
-                    wigYtd: data.WIG_YTD,
-                    msciYtd: data.MSCI_YTD,
-                    ytdLongsContrib: data.YTD_Longs_Contrib,
-                    ytdShortsContrib: data.YTD_Shorts_Contrib,
-                    jensensAlpha: data.Jensens_Alpha,
-                    ytdAlpha: data.YTD_Alpha,
-                    ytdMaxDrawdown: data.YTD_Max_Drawdown,
-                    benchmarkYtdMaxDrawdown: data.Benchmark_YTD_Max_Drawdown,
-                    currencyExposure: data.Risk_Attribution ?
-                        Object.fromEntries(
-                            Object.entries(data.Risk_Attribution).reduce((acc: any) => {
-                                return acc;
-                            }, {})
-                        ) : {},
+                // The server now returns data already formatted for the frontend (mostly).
+                // We just need to map properties to the FullRiskReport interface.
 
-                    // Actually, let's look at how it WAS implemented.
-                    // Previous mapping:
-                    /*
-                    currencyExposure: {}, // It was likely empty or I missed it.
-                    */
-                    // But `Dashboard.tsx` checks `vitals.currencyExposure`.
-                    // I will leave it empty for now and map `fxWatchlist` which is what we want.
-
-                    fxWatchlist: data.Fx_Watchlist || {},
-
-                    periodInfo: data.Period_Info
-                };
-
-                // RE-INSTATE Currency Exposure Logic if possible?
-                // The backend does not send it. I will leave it as empty object for now
-                // or try to derive it if `Risk_Attribution` has weights and we knew currencies.
-                // Since I don't have currency map here, I can't.
-                // However, the user asked for FX Matrix (FxWatchlist), which is mapped now.
+                // Safety check: ensure vitals exists
+                if (!data.vitals) {
+                    throw new Error("Invalid response format: 'vitals' missing");
+                }
 
                 return {
-                    vitals,
-                    leverage: data.Leverage_Stats,
-                    history: data.History || [], // Handle missing
-                    periodicReturns: data.Periodic_Returns || [], // Handle missing
-                    activeRisks: data.Risk_Attribution ? Object.entries(data.Risk_Attribution).map(([ticker, val]: any) => ({
-                        ticker,
-                        weight: val.Weight,
-                        pctRisk: val.Pct_Risk,
-                        mctr: val.MCTR
-                    })).sort((a, b) => b.pctRisk - a.pctRisk) : [],
-                    stressTests: data.Stress_Tests ? Object.entries(data.Stress_Tests).map(([scenario, impact]: any) => ({
-                        scenario,
-                        impact
-                    })) : [],
-                    monteCarlo: data.Monte_Carlo || [], // Handle missing
-                    ytdHistory: data.YTD_History || [], // Handle missing
-                    volumeWeightedCorrelation: data.Volume_Weighted_Correlation || undefined, // Use undefined for optional
+                    vitals: {
+                        ...data.vitals,
+                        // Ensure defaults for critical nested objects if missing from partial server response
+                        currencyExposure: data.vitals.currencyExposure || {},
+                        fxWatchlist: data.vitals.fxWatchlist || {},
+                        periodInfo: data.vitals.periodInfo || { Start_Date: "N/A", End_Date: "N/A", Years: 0 }
+                    },
+                    leverage: data.leverage || { Long_Exp: 0, Short_Exp: 0, Gross_Exp: 0, Net_Exp: 0, Daily_Drag: 0 },
+                    history: data.history || [],
+                    periodicReturns: data.periodicReturns || [],
+                    activeRisks: data.riskAttribution || [], // Rename data.riskAttribution -> activeRisks
+                    stressTests: data.stressTests || [],
+                    monteCarlo: data.monteCarlo || [],
+                    ytdHistory: data.ytdHistory || [],
+                    volumeWeightedCorrelation: data.volumeWeightedCorrelation || undefined,
                     error: data.error
                 };
             }
