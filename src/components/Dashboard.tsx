@@ -5,7 +5,7 @@ import { ExecutiveSummary } from './dashboard/ExecutiveSummary';
 import { ReturnsHeatmap } from './dashboard/ReturnsHeatmap';
 import { CorrelationMatrixTable } from './dashboard/CorrelationMatrixTable';
 import { FxExposureWidget } from './dashboard/FxExposureWidget';
-import { LayoutDashboard, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, ShieldCheck, RefreshCw } from 'lucide-react';
 import { cn } from '../lib/utils';
 import {
     ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip,
@@ -105,7 +105,7 @@ export const Dashboard: React.FC = () => {
                             <p className="font-mono text-rose-400 font-bold text-base">{formatPercent(leverage.Short_Exp)}</p>
                         </div>
 
-                        {/* Refresh Button */}
+                        {/* Refresh Button - Fixed Alignment */}
                         <button
                             onClick={() => {
                                 setLoading(true);
@@ -113,12 +113,10 @@ export const Dashboard: React.FC = () => {
                                     if (res) setData(res);
                                 }).finally(() => setLoading(false));
                             }}
-                            className="bg-white/5 hover:bg-white/10 px-3 py-2 rounded-lg border border-white/10 transition-colors flex items-center justify-center"
+                            className="bg-white/5 hover:bg-white/10 px-4 rounded-lg border border-white/10 transition-colors flex items-center justify-center"
                             title="Force Refresh Data"
                         >
-                            <div className={cn("h-4 w-4 text-emerald-400", loading ? "animate-spin" : "")}>
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-refresh-cw"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M3 21v-5h5" /></svg>
-                            </div>
+                            <RefreshCw className={cn("h-5 w-5 text-emerald-400", loading ? "animate-spin" : "")} />
                         </button>
                     </div>
                 </div>

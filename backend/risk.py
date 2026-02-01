@@ -700,6 +700,39 @@ def calculate_risk_metrics(price_df, volume_df=None, fx_df=None):
     with open("debug_risk.txt", "a") as f:
         f.write(f"DEBUG: YTD Return (Cum): {ytd_return:.4%}\n")
 
+    # --- 9. FX WATCHLIST METRICS ---
+    fx_watchlist_metrics = {}
+    if fx_df is not None and not fx_df.empty:
+        try:
+            curr_year_start = pd.Timestamp(f"{datetime.now().year}-01-01")
+            for fx_ticker in WATCHLIST_FX:
+                if fx_ticker in fx_df.columns:
+                    series = fx_df[fx_ticker].dropna()
+                    if series.empty: continue
+                    if hasattr(series.index, 'tz') and series.index.tz is not None:
+                        series.index = series.index.tz_localize(None)
+                    
+                    current_val = series.iloc[-1]
+                    idx_start = series.index.searchsorted(curr_year_start)
+                    
+                    if idx_start > 0:
+                        start_val = series.iloc[idx_start - 1]
+                        ytd_perf = (current_val - start_val) / start_val
+                    elif idx_start == 0:
+                        start_val = series.iloc[0]
+                        ytd_perf = (current_val - start_val) / start_val
+                    else:
+                        ytd_perf = 0.0
+                    
+                    # Clean Name
+                    clean_name = fx_ticker.replace("=X", "").replace("-", "/")
+                    if len(clean_name) == 6 and "/" not in clean_name:
+                         clean_name = f"{clean_name[:3]}/{clean_name[3:]}"
+                    
+                    fx_watchlist_metrics[clean_name] = ytd_perf
+        except Exception as e:
+            print(f"Error calculating FX metrics: {e}")
+
     return {
         'Beta': portfolio_beta,
         'Annual_Return': annual_ret,
@@ -745,7 +778,7 @@ def calculate_risk_metrics(price_df, volume_df=None, fx_df=None):
             'Net_Exp': total_long_weight - total_short_weight,
             'Daily_Drag': total_daily_drag
         },
-        'Fx_Watchlist': fx_watchlist_data,
+        'Fx_Watchlist': fx_watchlist_metrics,
         'YTD_Stream': portfolio_val_series if 'portfolio_val_series' in locals() else None,
         'YTD_Benchmark_Stream': ytd_benchmark if 'ytd_benchmark' in locals() else None
     }
